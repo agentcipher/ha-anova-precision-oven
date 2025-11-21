@@ -135,19 +135,41 @@ class AnovaOven:
             payload = data.get('payload', {})
             device_id = payload.get('id')
 
-            if device_id and device_id in self._devices:
-                # Update existing device with new state
-                try:
-                    # Preserve existing device info but update with new state data
-                    existing = self._devices[device_id]
+            if not device_id:
+                self.logger.warning("Received EVENT_APO_STATE without device id")
+                return
 
-                    # Update state with the full payload which includes nodes
-                    if 'state' in payload:
-                        existing.state = payload['state']
+            if device_id not in self._devices:
+                self.logger.warning(f"Received state for unknown device: {device_id}")
+                return
 
-                    self.logger.debug(f"Updated state for device {device_id}")
-                except Exception as e:
-                    self.logger.error(f"Failed to update device state: {e}")
+            try:
+                existing = self._devices[device_id]
+
+                # The payload IS the state data with nodes
+                # Store the entire payload as the state
+                existing.state = payload
+
+                # Update specific fields if present
+                if 'nodes' in payload:
+                    # Extract current temperature if available
+                    temp_bulbs = payload.get('nodes', {}).get('temperatureBulbs', {})
+                    mode = temp_bulbs.get('mode', 'dry')
+                    if mode in temp_bulbs:
+                        current_temp = temp_bulbs[mode].get('current', {}).get('celsius')
+                        if current_temp is not None:
+                            existing.current_temperature = current_temp
+
+                        setpoint_temp = temp_bulbs[mode].get('setpoint', {}).get('celsius')
+                        if setpoint_temp is not None:
+                            existing.target_temperature = setpoint_temp
+
+                from datetime import datetime
+                existing.last_update = datetime.now()
+
+                self.logger.debug(f"Updated state for device {existing.name}")
+            except Exception as e:
+                self.logger.error(f"Failed to update device state for {device_id}: {e}", exc_info=True)
 
     def get_device(self, device_id: str) -> Device:
         """Get device by ID."""
