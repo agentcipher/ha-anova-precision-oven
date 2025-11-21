@@ -441,6 +441,15 @@ class Device(BaseModel):
                 return state_val.lower() in ['cooking', 'preheating']
         return False
 
+    @property
+    def nodes(self) -> Dict[str, Any]:
+        """Get state nodes safely."""
+        if isinstance(self.state, dict):
+            return self.state.get('nodes', {})
+        if hasattr(self.state, 'nodes'):
+            return self.state.nodes
+        return {}
+
 
 class RecipeStageConfig(BaseModel):
     """
