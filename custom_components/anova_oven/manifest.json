@@ -2,15 +2,15 @@
   "domain": "anova_oven",
   "name": "Anova Precision Oven",
   "codeowners": [
-    "@anova"
+    "@agentcipher"
   ],
   "config_flow": true,
   "dependencies": [],
-  "documentation": "https://github.com/yourusername/ha-anova-oven",
+  "documentation": "https://github.com/agentcipher/ha-anova-oven",
   "iot_class": "cloud_push",
-  "issue_tracker": "https://github.com/yourusername/ha-anova-oven/issues",
+  "issue_tracker": "https://github.com/agentcipher/ha-anova-oven/issues",
   "requirements": [
-    "git+https://github.com/agentcipher/anova-precision-oven-sdk.git#egg=anova-precision-oven-sdk"
+    "anova-precision-oven-sdk==2025.11.1"
   ],
   "version": "2025.11.12"
 }
