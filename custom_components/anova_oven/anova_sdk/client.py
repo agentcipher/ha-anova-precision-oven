@@ -102,12 +102,20 @@ class WebSocketClient:
             self._connected = False
 
     async def _reconnect(self) -> None:
-        """Attempt reconnection."""
+        """Attempt reconnection with exponential backoff."""
         self.logger.info("Reconnecting...")
-        try:
-            await self.connect()
-        except Exception as e:
-            self.logger.error(f"Reconnect failed: {e}")
+        delay = 1.0
+        max_delay = 60.0
+
+        while not self.is_connected:
+            try:
+                await self.connect()
+                self.logger.info("Reconnection successful")
+                return
+            except Exception as e:
+                self.logger.error(f"Reconnect failed: {e}. Retrying in {delay}s...")
+                await asyncio.sleep(delay)
+                delay = min(delay * 2, max_delay)
 
     async def _handle_message(self, data: Dict[str, Any]) -> None:
         """Handle incoming message."""
