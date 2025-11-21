@@ -136,8 +136,13 @@ class AnovaOven:
             device_id = payload.get('id')
 
             if not device_id:
-                self.logger.warning("Received EVENT_APO_STATE without device id")
-                return
+                # If we only have one device, assume the update is for that device
+                if len(self._devices) == 1:
+                    device_id = list(self._devices.keys())[0]
+                    self.logger.debug(f"Received state without ID, assuming device {device_id}")
+                else:
+                    self.logger.warning(f"Received EVENT_APO_STATE without device id. Payload: {payload}")
+                    return
 
             if device_id not in self._devices:
                 self.logger.warning(f"Received state for unknown device: {device_id}")

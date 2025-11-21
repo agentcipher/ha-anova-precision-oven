@@ -69,7 +69,20 @@ class AnovaOvenCoordinator(DataUpdateCoordinator[dict[str, Device]]):
         _LOGGER.debug("Performing initial device discovery...")
         await self.oven.discover_devices(timeout=10.0)
 
+        # Register callback for real-time updates
+        self.oven.client.add_callback(self._on_data_update)
+
         self._setup_complete = True
+
+    def _on_data_update(self, data: dict[str, Any]) -> None:
+        """Handle real-time updates from WebSocket."""
+        # Only trigger update if we have devices
+        if not self.oven._devices:
+            return
+
+        # Update the coordinator data
+        device_dict = {device_id: device for device_id, device in self.oven._devices.items()}
+        self.async_set_updated_data(device_dict)
 
     async def _load_recipes(self) -> None:
         """Load recipe library from YAML file."""
