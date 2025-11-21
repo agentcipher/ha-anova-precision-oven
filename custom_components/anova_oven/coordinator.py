@@ -49,9 +49,10 @@ class AnovaOvenCoordinator(DataUpdateCoordinator[dict[str, Device]]):
         if self._setup_complete:
             return
 
-        # Initialize SDK
+        # Initialize SDK with token from config
+        token = self.entry.data.get(CONF_TOKEN)
         environment = self.entry.data.get(CONF_ENVIRONMENT, "production")
-        self.oven = AnovaOven(environment=environment)
+        self.oven = AnovaOven(token=token, environment=environment)
 
         # Override WebSocket URL if provided
         ws_url = self.entry.data.get(CONF_WS_URL, DEFAULT_WS_URL)
