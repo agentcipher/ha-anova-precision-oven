@@ -51,13 +51,14 @@ class AnovaOvenRecipeSelect(AnovaOvenEntity, SelectEntity):
     def current_option(self) -> str | None:
         """Return the current recipe."""
         device = self.coordinator.get_device(self._device_id)
-        if not device or not device.state or not device.state.cook:
+        if not device:
             return "None"
 
-        # Try to match current cook to a recipe
-        cook_name = device.state.cook.name
-        if cook_name and cook_name in self._attr_options:
-            return cook_name
+        # Try to get cook name from detailed state
+        if hasattr(device, 'state') and hasattr(device.state, 'cook') and device.state.cook:
+            cook_name = getattr(device.state.cook, 'name', None)
+            if cook_name and cook_name in self._attr_options:
+                return cook_name
 
         return "None"
 
@@ -108,10 +109,14 @@ class AnovaOvenTemperatureUnitSelect(AnovaOvenEntity, SelectEntity):
     def current_option(self) -> str | None:
         """Return the current temperature unit."""
         device = self.coordinator.get_device(self._device_id)
-        if not device or not device.state:
+        if not device:
             return "C"
 
-        return device.state.temperature_unit or "C"
+        # Try to get temperature unit from detailed state
+        if hasattr(device, 'state') and hasattr(device.state, 'temperature_unit'):
+            return device.state.temperature_unit or "C"
+
+        return "C"
 
     async def async_select_option(self, option: str) -> None:
         """Select temperature unit."""
