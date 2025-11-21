@@ -6,8 +6,9 @@ from datetime import timedelta
 from typing import Any
 
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.const import CONF_API_TOKEN
+from homeassistant.const import CONF_API_TOKEN, CONF_TOKEN
 from homeassistant.core import HomeAssistant
+from homeassistant.exceptions import ConfigEntryAuthFailed
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 
 from anova_oven_sdk import AnovaOven
@@ -57,7 +58,18 @@ class AnovaOvenCoordinator(DataUpdateCoordinator[dict[str, Device]]):
             update_interval=timedelta(seconds=30),
         )
         self.entry = entry
-        self.api_token = entry.data[CONF_API_TOKEN]
+        
+        # Try to find the token in various keys
+        self.api_token = entry.data.get(CONF_API_TOKEN)
+        if not self.api_token:
+            self.api_token = entry.data.get(CONF_TOKEN)
+        if not self.api_token:
+            self.api_token = entry.data.get("access_token")
+            
+        if not self.api_token:
+            _LOGGER.error("API token not found in config entry data: %s", entry.data.keys())
+            raise ConfigEntryAuthFailed("API token missing")
+
         self.recipe_library: RecipeLibrary | None = None
         
         # Configure settings
