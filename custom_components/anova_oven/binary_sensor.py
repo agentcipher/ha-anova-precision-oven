@@ -81,6 +81,7 @@ BINARY_SENSORS: tuple[AnovaOvenBinarySensorEntityDescription, ...] = (
         device_class=BinarySensorDeviceClass.CONNECTIVITY,
         is_on_fn=lambda device: (
             device.state_nodes.get("probe", {}).get("connected", False)
+            or device.state_nodes.get("probe", {}).get("current") is not None
         ),
     ),
     AnovaOvenBinarySensorEntityDescription(

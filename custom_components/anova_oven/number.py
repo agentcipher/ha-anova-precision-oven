@@ -68,7 +68,7 @@ class AnovaOvenProbeTarget(AnovaOvenEntity, NumberEntity):
 
         # Available if probe is connected (only for detailed state)
         probe = device.state_nodes.get("probe", {})
-        return probe.get("connected", False)
+        return probe.get("connected", False) or probe.get("current") is not None
 
     async def async_set_native_value(self, value: float) -> None:
         """Set probe target temperature."""
