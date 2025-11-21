@@ -46,12 +46,10 @@ SENSORS: tuple[AnovaOvenSensorEntityDescription, ...] = (
             device.current_temperature
             if hasattr(device, 'current_temperature') and device.current_temperature is not None
             else (
-                device.state.nodes.get("temperatureBulbs", {})
-                .get(device.state.nodes.get("temperatureBulbs", {}).get("mode", MODE_DRY), {})
+                device.nodes.get("temperatureBulbs", {})
+                .get(device.nodes.get("temperatureBulbs", {}).get("mode", MODE_DRY), {})
                 .get("current", {})
                 .get("celsius")
-                if hasattr(device, 'state') and hasattr(device.state, 'nodes')
-                else None
             )
         ),
     ),
@@ -65,12 +63,10 @@ SENSORS: tuple[AnovaOvenSensorEntityDescription, ...] = (
             device.target_temperature
             if hasattr(device, 'target_temperature') and device.target_temperature is not None
             else (
-                device.state.nodes.get("temperatureBulbs", {})
-                .get(device.state.nodes.get("temperatureBulbs", {}).get("mode", MODE_DRY), {})
+                device.nodes.get("temperatureBulbs", {})
+                .get(device.nodes.get("temperatureBulbs", {}).get("mode", MODE_DRY), {})
                 .get("setpoint", {})
                 .get("celsius")
-                if hasattr(device, 'state') and hasattr(device.state, 'nodes')
-                else None
             )
         ),
     ),
@@ -81,15 +77,11 @@ SENSORS: tuple[AnovaOvenSensorEntityDescription, ...] = (
         state_class=SensorStateClass.MEASUREMENT,
         native_unit_of_measurement=UnitOfTemperature.CELSIUS,
         value_fn=lambda device: (
-            device.state.nodes.get("probe", {}).get("current", {}).get("celsius")
-            if hasattr(device, 'state') and hasattr(device.state, 'nodes')
-            else None
+            device.nodes.get("probe", {}).get("current", {}).get("celsius")
         ),
         available_fn=lambda device: (
-            hasattr(device, 'state')
-            and hasattr(device.state, 'nodes')
-            and device.state.nodes.get("probe") is not None
-            and device.state.nodes.get("probe", {}).get("current") is not None
+            device.nodes.get("probe") is not None
+            and device.nodes.get("probe", {}).get("current") is not None
         ),
     ),
     AnovaOvenSensorEntityDescription(
@@ -99,15 +91,11 @@ SENSORS: tuple[AnovaOvenSensorEntityDescription, ...] = (
         state_class=SensorStateClass.MEASUREMENT,
         native_unit_of_measurement=UnitOfTemperature.CELSIUS,
         value_fn=lambda device: (
-            device.state.nodes.get("probe", {}).get("setpoint", {}).get("celsius")
-            if hasattr(device, 'state') and hasattr(device.state, 'nodes')
-            else None
+            device.nodes.get("probe", {}).get("setpoint", {}).get("celsius")
         ),
         available_fn=lambda device: (
-            hasattr(device, 'state')
-            and hasattr(device.state, 'nodes')
-            and device.state.nodes.get("probe") is not None
-            and device.state.nodes.get("probe", {}).get("setpoint") is not None
+            device.nodes.get("probe") is not None
+            and device.nodes.get("probe", {}).get("setpoint") is not None
         ),
     ),
     AnovaOvenSensorEntityDescription(
@@ -117,15 +105,11 @@ SENSORS: tuple[AnovaOvenSensorEntityDescription, ...] = (
         state_class=SensorStateClass.MEASUREMENT,
         native_unit_of_measurement=UnitOfTime.SECONDS,
         value_fn=lambda device: (
-            device.state.nodes.get("timer", {}).get("current")
-            if hasattr(device, 'state') and hasattr(device.state, 'nodes')
-            else None
+            device.nodes.get("timer", {}).get("current")
         ),
         available_fn=lambda device: (
-            hasattr(device, 'state')
-            and hasattr(device.state, 'nodes')
-            and device.state.nodes.get("timer") is not None
-            and device.state.nodes.get("timer", {}).get("mode") != "idle"
+            device.nodes.get("timer") is not None
+            and device.nodes.get("timer", {}).get("mode") != "idle"
         ),
     ),
     AnovaOvenSensorEntityDescription(
@@ -134,15 +118,11 @@ SENSORS: tuple[AnovaOvenSensorEntityDescription, ...] = (
         device_class=SensorDeviceClass.DURATION,
         native_unit_of_measurement=UnitOfTime.SECONDS,
         value_fn=lambda device: (
-            device.state.nodes.get("timer", {}).get("initial")
-            if hasattr(device, 'state') and hasattr(device.state, 'nodes')
-            else None
+            device.nodes.get("timer", {}).get("initial")
         ),
         available_fn=lambda device: (
-            hasattr(device, 'state')
-            and hasattr(device.state, 'nodes')
-            and device.state.nodes.get("timer") is not None
-            and device.state.nodes.get("timer", {}).get("mode") != "idle"
+            device.nodes.get("timer") is not None
+            and device.nodes.get("timer", {}).get("mode") != "idle"
         ),
     ),
     AnovaOvenSensorEntityDescription(
@@ -151,17 +131,13 @@ SENSORS: tuple[AnovaOvenSensorEntityDescription, ...] = (
         state_class=SensorStateClass.MEASUREMENT,
         native_unit_of_measurement=PERCENTAGE,
         value_fn=lambda device: (
-            device.state.nodes.get("steamGenerators", {})
+            device.nodes.get("steamGenerators", {})
             .get("relativeOutput", {})
             .get("percentage")
-            if hasattr(device, 'state') and hasattr(device.state, 'nodes')
-            else None
         ),
         available_fn=lambda device: (
-            hasattr(device, 'state')
-            and hasattr(device.state, 'nodes')
-            and device.state.nodes.get("steamGenerators") is not None
-            and device.state.nodes.get("steamGenerators", {}).get("mode") != "idle"
+            device.nodes.get("steamGenerators") is not None
+            and device.nodes.get("steamGenerators", {}).get("mode") != "idle"
         ),
     ),
     AnovaOvenSensorEntityDescription(
@@ -170,9 +146,7 @@ SENSORS: tuple[AnovaOvenSensorEntityDescription, ...] = (
         state_class=SensorStateClass.MEASUREMENT,
         native_unit_of_measurement=PERCENTAGE,
         value_fn=lambda device: (
-            device.state.nodes.get("fan", {}).get("speed")
-            if hasattr(device, 'state') and hasattr(device.state, 'nodes')
-            else None
+            device.nodes.get("fan", {}).get("speed")
         ),
     ),
     AnovaOvenSensorEntityDescription(

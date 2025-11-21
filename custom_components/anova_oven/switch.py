@@ -81,8 +81,8 @@ class AnovaOvenCookingSwitch(AnovaOvenEntity, SwitchEntity):
             if hasattr(device, 'target_temperature') and device.target_temperature:
                 target_temp = device.target_temperature
             # Try detailed state
-            elif hasattr(device, 'state') and hasattr(device.state, 'nodes'):
-                temp_bulbs = device.state.nodes.get("temperatureBulbs", {})
+            else:
+                temp_bulbs = device.nodes.get("temperatureBulbs", {})
                 setpoint = temp_bulbs.get("dry", {}).get("setpoint", {})
                 target_temp = setpoint.get("celsius", target_temp)
 

@@ -96,13 +96,12 @@ class AnovaOvenClimate(AnovaOvenEntity, ClimateEntity):
             return device.current_temperature
 
         # Try detailed state if available
-        if hasattr(device, 'state') and hasattr(device.state, 'nodes'):
-            temp_bulbs = device.state.nodes.get("temperatureBulbs", {})
-            mode = temp_bulbs.get("mode", MODE_DRY)
+        temp_bulbs = device.nodes.get("temperatureBulbs", {})
+        mode = temp_bulbs.get("mode", MODE_DRY)
 
-            if mode in temp_bulbs:
-                current = temp_bulbs[mode].get("current", {})
-                return current.get("celsius")
+        if mode in temp_bulbs:
+            current = temp_bulbs[mode].get("current", {})
+            return current.get("celsius")
 
         return None
 
@@ -118,13 +117,12 @@ class AnovaOvenClimate(AnovaOvenEntity, ClimateEntity):
             return device.target_temperature
 
         # Try detailed state if available
-        if hasattr(device, 'state') and hasattr(device.state, 'nodes'):
-            temp_bulbs = device.state.nodes.get("temperatureBulbs", {})
-            mode = temp_bulbs.get("mode", MODE_DRY)
+        temp_bulbs = device.nodes.get("temperatureBulbs", {})
+        mode = temp_bulbs.get("mode", MODE_DRY)
 
-            if mode in temp_bulbs:
-                setpoint = temp_bulbs[mode].get("setpoint", {})
-                return setpoint.get("celsius")
+        if mode in temp_bulbs:
+            setpoint = temp_bulbs[mode].get("setpoint", {})
+            return setpoint.get("celsius")
 
         return None
 
@@ -140,7 +138,7 @@ class AnovaOvenClimate(AnovaOvenEntity, ClimateEntity):
         }
 
         # Only try to access detailed state if it exists
-        if not hasattr(device, 'state') or not hasattr(device.state, 'nodes'):
+        if not device.nodes:
             return attrs
 
         # Add cooking information if available
@@ -152,7 +150,7 @@ class AnovaOvenClimate(AnovaOvenEntity, ClimateEntity):
                 attrs[ATTR_CURRENT_STAGE] = getattr(cook, 'current_stage', 0) or 0
 
         # Add probe temperature if available
-        probe_node = device.state.nodes.get("probe", {})
+        probe_node = device.nodes.get("probe", {})
         if probe_node:
             probe_temp = probe_node.get("current", {}).get("celsius")
             if probe_temp is not None:
@@ -162,15 +160,15 @@ class AnovaOvenClimate(AnovaOvenEntity, ClimateEntity):
                 attrs["probe_target"] = probe_setpoint
 
         # Add steam information if in wet mode
-        temp_bulbs = device.state.nodes.get("temperatureBulbs", {})
+        temp_bulbs = device.nodes.get("temperatureBulbs", {})
         if temp_bulbs.get("mode") == MODE_WET:
-            steam = device.state.nodes.get("steamGenerators", {})
+            steam = device.nodes.get("steamGenerators", {})
             if steam:
                 attrs["steam_mode"] = steam.get("mode")
                 attrs["steam_percentage"] = steam.get("relativeOutput", {}).get("percentage")
 
         # Add timer information
-        timer_node = device.state.nodes.get("timer", {})
+        timer_node = device.nodes.get("timer", {})
         if timer_node:
             attrs["timer_mode"] = timer_node.get("mode")
             attrs["timer_initial"] = timer_node.get("initial")
@@ -187,8 +185,8 @@ class AnovaOvenClimate(AnovaOvenEntity, ClimateEntity):
         # Determine duration from timer if currently cooking
         duration = None
         device = self.coordinator.get_device(self._device_id)
-        if device and hasattr(device, 'state') and hasattr(device.state, 'nodes'):
-            timer_node = device.state.nodes.get("timer", {})
+        if device:
+            timer_node = device.nodes.get("timer", {})
             if timer_node and timer_node.get("mode") != "idle":
                 duration = timer_node.get("initial")
 
