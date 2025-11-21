@@ -8,6 +8,8 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
+from anova_oven_sdk.models import Device
+
 from .const import DOMAIN
 from .coordinator import AnovaOvenCoordinator
 from .entity import AnovaOvenEntity
@@ -54,11 +56,8 @@ class AnovaOvenRecipeSelect(AnovaOvenEntity, SelectEntity):
         if not device:
             return "None"
 
-        # Try to get cook name from detailed state
-        if hasattr(device, 'state') and hasattr(device.state, 'cook') and device.state.cook:
-            cook_name = getattr(device.state.cook, 'name', None)
-            if cook_name and cook_name in self._attr_options:
-                return cook_name
+        if device.cook:
+            return device.cook.name or "None"
 
         return "None"
 
@@ -113,9 +112,13 @@ class AnovaOvenTemperatureUnitSelect(AnovaOvenEntity, SelectEntity):
             return "C"
 
         # Try to get temperature unit from detailed state
+        # Assuming Device has temperature_unit or it's in state
+        # Based on previous files, it might be device.state.temperature_unit
+        # But let's check if Device has it.
+        # If not, default to C.
         if hasattr(device.state, 'temperature_unit'):
-            return device.state.temperature_unit or "C"
-
+             return device.state.temperature_unit or "C"
+        
         return "C"
 
     async def async_select_option(self, option: str) -> None:

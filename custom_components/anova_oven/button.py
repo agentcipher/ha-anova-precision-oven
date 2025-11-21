@@ -1,6 +1,3 @@
-"""Button platform for Anova Precision Oven."""
-from __future__ import annotations
-
 from dataclasses import dataclass
 from typing import Any
 

@@ -5,75 +5,53 @@ import logging
 from typing import Any
 
 import voluptuous as vol
-from custom_components.anova_oven.anova_sdk.oven import AnovaOven
-
 from homeassistant import config_entries
-from homeassistant.const import CONF_TOKEN
-from homeassistant.core import HomeAssistant
+from homeassistant.const import CONF_API_TOKEN
 from homeassistant.data_entry_flow import FlowResult
 from homeassistant.exceptions import HomeAssistantError
 
-from .const import (
-    CONF_ENVIRONMENT,
-    CONF_RECIPES_PATH,
-    CONF_WS_URL,
-    DEFAULT_WS_URL,
-    DOMAIN,
-)
+from anova_oven_sdk import AnovaOven
+from anova_oven_sdk.settings import settings
+from anova_oven_sdk.exceptions import ConfigurationError
+
+from .const import DOMAIN
 
 _LOGGER = logging.getLogger(__name__)
 
 STEP_USER_DATA_SCHEMA = vol.Schema(
     {
-        vol.Required(CONF_TOKEN): str,
-        vol.Optional(CONF_WS_URL, default=DEFAULT_WS_URL): str,
-        vol.Optional(CONF_ENVIRONMENT, default="production"): vol.In(
-            ["dev", "staging", "production"]
-        ),
-        vol.Optional(CONF_RECIPES_PATH, default=""): str,
+        vol.Required(CONF_API_TOKEN): str,
     }
 )
 
 
-async def validate_input(hass: HomeAssistant, data: dict[str, Any]) -> dict[str, Any]:
-    """
-    Validate the user input allows us to connect.
+async def validate_input(data: dict[str, Any]) -> dict[str, Any]:
+    """Validate the user input allows us to connect.
 
     Data has the keys from STEP_USER_DATA_SCHEMA with values provided by the user.
     """
-    # Import here to avoid circular imports
-    from .anova_sdk.oven import AnovaOven
-    from .anova_sdk.exceptions import AnovaError
-
-    # Validate token format
-    token = data[CONF_TOKEN]
-    if not token.startswith("anova-"):
-        raise InvalidToken("Token must start with 'anova-'")
-
-    # Try to connect and discover devices
+    # Configure SDK with the provided token
     try:
-        # FIX: Pass token during AnovaOven initialization, not after
-        async with AnovaOven(
-                token=data[CONF_TOKEN],
-                environment=data.get(CONF_ENVIRONMENT, "production")
-        ) as oven:
-            # Discover devices to validate connection
+        settings.configure(TOKEN=data[CONF_API_TOKEN])
+    except Exception as e:
+        _LOGGER.error("Failed to configure Anova SDK settings: %s", e)
+        raise CannotConnect from e
+
+    try:
+        async with AnovaOven() as oven:
+            # Attempt to discover devices to verify connection
             devices = await oven.discover_devices()
-
             if not devices:
-                raise CannotConnect("No devices found")
+                raise NoDevicesFound
+    except ConfigurationError as e:
+        _LOGGER.error("Anova SDK configuration error: %s", e)
+        raise InvalidAuth from e
+    except Exception as e:
+        _LOGGER.error("Failed to connect to Anova API: %s", e)
+        raise CannotConnect from e
 
-            # Return info that you want to store in the config entry
-            return {
-                "title": f"Anova Oven ({len(devices)} device(s))",
-                "device_count": len(devices),
-            }
-    except AnovaError as err:
-        _LOGGER.error("Failed to connect to Anova: %s", err)
-        raise CannotConnect(f"Connection failed: {err}") from err
-    except Exception as err:
-        _LOGGER.exception("Unexpected exception during validation")
-        raise CannotConnect(f"Unexpected error: {err}") from err
+    # Return info that you want to store in the config entry.
+    return {"title": "Anova Precision Oven"}
 
 
 class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
@@ -85,15 +63,19 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         self, user_input: dict[str, Any] | None = None
     ) -> FlowResult:
         """Handle the initial step."""
-        errors: dict[str, str] = {}
+        if self._async_current_entries():
+            return self.async_abort(reason="single_instance_allowed")
 
+        errors: dict[str, str] = {}
         if user_input is not None:
             try:
-                info = await validate_input(self.hass, user_input)
+                info = await validate_input(user_input)
             except CannotConnect:
                 errors["base"] = "cannot_connect"
-            except InvalidToken:
-                errors["base"] = "invalid_token"
+            except InvalidAuth:
+                errors["base"] = "invalid_auth"
+            except NoDevicesFound:
+                errors["base"] = "no_devices_found"
             except Exception:  # pylint: disable=broad-except
                 _LOGGER.exception("Unexpected exception")
                 errors["base"] = "unknown"
@@ -109,5 +91,9 @@ class CannotConnect(HomeAssistantError):
     """Error to indicate we cannot connect."""
 
 
-class InvalidToken(HomeAssistantError):
-    """Error to indicate the token is invalid."""
+class InvalidAuth(HomeAssistantError):
+    """Error to indicate there is invalid auth."""
+
+
+class NoDevicesFound(HomeAssistantError):
+    """Error to indicate no devices were found."""

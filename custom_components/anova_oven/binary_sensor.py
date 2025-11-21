@@ -13,10 +13,10 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
-from .const import DOMAIN, STATE_COOKING, STATE_PREHEATING
+from anova_oven_sdk.models import Device, DeviceState
+
 from .coordinator import AnovaOvenCoordinator
 from .entity import AnovaOvenEntity
-from .anova_sdk.models import Device
 
 
 @dataclass(frozen=True)
@@ -31,13 +31,13 @@ BINARY_SENSORS: tuple[AnovaOvenBinarySensorEntityDescription, ...] = (
         key="cooking",
         name="Cooking",
         device_class=BinarySensorDeviceClass.RUNNING,
-        is_on_fn=lambda device: device.is_cooking,
+        is_on_fn=lambda device: device.state.state in (DeviceState.COOKING, DeviceState.PREHEATING),
     ),
     AnovaOvenBinarySensorEntityDescription(
         key="preheating",
         name="Preheating",
         device_class=BinarySensorDeviceClass.HEAT,
-        is_on_fn=lambda device: device.status.lower() == STATE_PREHEATING,
+        is_on_fn=lambda device: device.state.state == DeviceState.PREHEATING,
     ),
     AnovaOvenBinarySensorEntityDescription(
         key="door_open",
@@ -55,13 +55,13 @@ BINARY_SENSORS: tuple[AnovaOvenBinarySensorEntityDescription, ...] = (
         key="probe_connected",
         name="Probe Connected",
         device_class=BinarySensorDeviceClass.CONNECTIVITY,
-        is_on_fn=lambda device: device.nodes.probe.connected or device.nodes.probe.current.value is not None,
+        is_on_fn=lambda device: device.nodes.probe.connected,
     ),
     AnovaOvenBinarySensorEntityDescription(
         key="vent_open",
         name="Vent",
         device_class=BinarySensorDeviceClass.OPENING,
-        is_on_fn=lambda device: device.nodes.exhaust_vent.is_open,
+        is_on_fn=lambda device: device.nodes.exhaust_vent.state == "open",
     ),
 )
 

@@ -10,10 +10,7 @@
   "iot_class": "cloud_push",
   "issue_tracker": "https://github.com/yourusername/ha-anova-oven/issues",
   "requirements": [
-    "websockets>=12.0",
-    "pydantic>=2.0",
-    "dynaconf>=3.2.0",
-    "pyyaml>=6.0"
+    "git+https://github.com/agentcipher/anova-precision-oven-sdk.git#egg=anova-precision-oven-sdk"
   ],
   "version": "2025.11.12"
 }

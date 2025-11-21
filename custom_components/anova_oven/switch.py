@@ -1,16 +1,18 @@
 """Switch platform for Anova Oven integration."""
 from __future__ import annotations
 
-import logging
-
 from homeassistant.components.switch import SwitchEntity
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
+from anova_oven_sdk.models import Device, DeviceState
+
 from .const import DOMAIN
 from .coordinator import AnovaOvenCoordinator
 from .entity import AnovaOvenEntity
+
+import logging
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -20,19 +22,18 @@ async def async_setup_entry(
     entry: ConfigEntry,
     async_add_entities: AddEntitiesCallback,
 ) -> None:
-    """Set up Anova Oven switch entities from config entry."""
+    """Set up Anova Oven switch entities."""
     coordinator: AnovaOvenCoordinator = hass.data[DOMAIN][entry.entry_id]
 
-    entities = [
-        AnovaOvenCookingSwitch(coordinator, device_id)
-        for device_id in coordinator.data
-    ]
+    entities = []
+    for device_id in coordinator.data:
+        entities.append(AnovaOvenSwitch(coordinator, device_id))
 
     async_add_entities(entities)
 
 
-class AnovaOvenCookingSwitch(AnovaOvenEntity, SwitchEntity):
-    """Switch entity to control oven cooking state."""
+class AnovaOvenSwitch(AnovaOvenEntity, SwitchEntity):
+    """Switch entity for Anova Precision Oven."""
 
     _attr_translation_key = "cooking"
     _attr_icon = "mdi:stove"
@@ -47,22 +48,17 @@ class AnovaOvenCookingSwitch(AnovaOvenEntity, SwitchEntity):
         self._attr_name = "Cooking"
 
     @property
-    def device(self):
-        """Return the device."""
-        return self.coordinator.get_device(self._device_id)
-
-    @property
     def is_on(self) -> bool:
         """Return True if the oven is cooking."""
-        device = self.device
+        device = self.coordinator.get_device(self._device_id)
         if not device:
             return False
 
-        return device.is_cooking
+        return device.state.state in (DeviceState.COOKING, DeviceState.PREHEATING)
 
     async def async_turn_on(self, **kwargs) -> None:
         """Turn on cooking."""
-        device = self.device
+        device = self.coordinator.get_device(self._device_id)
         _LOGGER.debug("Turning on cooking for %s", device.name if device else "unknown")
 
         # Get last known temperature or use default
@@ -71,7 +67,7 @@ class AnovaOvenCookingSwitch(AnovaOvenEntity, SwitchEntity):
             if device.target_temperature:
                 target_temp = device.target_temperature
             elif device.nodes.temperature_bulbs.mode == "dry":
-                target_temp = device.nodes.temperature_bulbs.dry.setpoint.value or target_temp
+                target_temp = device.nodes.temperature_bulbs.dry.setpoint.celsius or target_temp
 
         try:
             await self.coordinator.async_start_cook(
@@ -85,9 +81,6 @@ class AnovaOvenCookingSwitch(AnovaOvenEntity, SwitchEntity):
 
     async def async_turn_off(self, **kwargs) -> None:
         """Turn off cooking."""
-        device = self.device
-        _LOGGER.debug("Turning off cooking for %s", device.name if device else "unknown")
-
         try:
             await self.coordinator.async_stop_cook(self._device_id)
         except Exception as err:

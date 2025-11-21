@@ -1,13 +1,19 @@
 """Number platform for Anova Precision Oven."""
 from __future__ import annotations
 
-from homeassistant.components.number import NumberEntity, NumberMode
+from homeassistant.components.number import (
+    NumberDeviceClass,
+    NumberEntity,
+    NumberEntityDescription,
+)
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import UnitOfTemperature
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
-from .const import DOMAIN, PROBE_TEMP_MAX, PROBE_TEMP_MIN
+from anova_oven_sdk.models import Device
+
+from .const import DOMAIN, TEMP_MAX, TEMP_MIN
 from .coordinator import AnovaOvenCoordinator
 from .entity import AnovaOvenEntity
 
@@ -22,20 +28,19 @@ async def async_setup_entry(
 
     entities = []
     for device_id in coordinator.data:
-        entities.append(AnovaOvenProbeTarget(coordinator, device_id))
+        entities.append(AnovaOvenProbeNumber(coordinator, device_id))
 
     async_add_entities(entities)
 
 
-class AnovaOvenProbeTarget(AnovaOvenEntity, NumberEntity):
-    """Number entity for probe target temperature."""
+class AnovaOvenProbeNumber(AnovaOvenEntity, NumberEntity):
+    """Number entity for Anova Precision Oven probe."""
 
-    _attr_icon = "mdi:thermometer-probe"
-    _attr_native_min_value = PROBE_TEMP_MIN
-    _attr_native_max_value = PROBE_TEMP_MAX
-    _attr_native_step = 0.5
+    _attr_device_class = NumberDeviceClass.TEMPERATURE
     _attr_native_unit_of_measurement = UnitOfTemperature.CELSIUS
-    _attr_mode = NumberMode.BOX
+    _attr_native_min_value = TEMP_MIN
+    _attr_native_max_value = TEMP_MAX
+    _attr_native_step = 1.0
 
     def __init__(self, coordinator: AnovaOvenCoordinator, device_id: str) -> None:
         """Initialize the number entity."""
@@ -44,27 +49,22 @@ class AnovaOvenProbeTarget(AnovaOvenEntity, NumberEntity):
 
     @property
     def native_value(self) -> float | None:
-        """Return the probe target temperature."""
+        """Return the value reported by the number."""
         device = self.coordinator.get_device(self._device_id)
         if not device:
             return None
-
-        return device.nodes.probe.setpoint.value
+        return device.nodes.probe.setpoint.celsius
 
     @property
     def available(self) -> bool:
         """Return if entity is available."""
-        if not super().available:
-            return False
-
         device = self.coordinator.get_device(self._device_id)
-        if not device:
-            return False
-
-        return device.nodes.probe.connected or device.nodes.probe.current.value is not None
+        return (
+            super().available
+            and device is not None
+            and device.nodes.probe.connected
+        )
 
     async def async_set_native_value(self, value: float) -> None:
-        """Set probe target temperature."""
-        await self.coordinator.async_set_probe(
-            self._device_id, target=value, temperature_unit="C"
-        )
+        """Set new value."""
+        await self.coordinator.async_set_probe(self._device_id, value, "C")
