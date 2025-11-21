@@ -32,9 +32,17 @@ BINARY_SENSORS: tuple[AnovaOvenBinarySensorEntityDescription, ...] = (
         name="Cooking",
         device_class=BinarySensorDeviceClass.RUNNING,
         is_on_fn=lambda device: (
-            device.state.state.lower() in [STATE_COOKING, STATE_PREHEATING]
-            if device.state
-            else False
+            device.is_cooking
+            if hasattr(device, 'is_cooking')
+            else (
+                device.state.value.lower() in [STATE_COOKING, STATE_PREHEATING]
+                if hasattr(device.state, 'value')
+                else (
+                    device.state.state.lower() in [STATE_COOKING, STATE_PREHEATING]
+                    if hasattr(device.state, 'state')
+                    else False
+                )
+            )
         ),
     ),
     AnovaOvenBinarySensorEntityDescription(
@@ -42,7 +50,13 @@ BINARY_SENSORS: tuple[AnovaOvenBinarySensorEntityDescription, ...] = (
         name="Preheating",
         device_class=BinarySensorDeviceClass.HEAT,
         is_on_fn=lambda device: (
-            device.state.state.lower() == STATE_PREHEATING if device.state else False
+            device.state.value.lower() == STATE_PREHEATING
+            if hasattr(device.state, 'value')
+            else (
+                device.state.state.lower() == STATE_PREHEATING
+                if hasattr(device.state, 'state')
+                else False
+            )
         ),
     ),
     AnovaOvenBinarySensorEntityDescription(
@@ -51,7 +65,7 @@ BINARY_SENSORS: tuple[AnovaOvenBinarySensorEntityDescription, ...] = (
         device_class=BinarySensorDeviceClass.DOOR,
         is_on_fn=lambda device: (
             device.state.nodes.get("door", {}).get("open", False)
-            if device.state
+            if hasattr(device, 'state') and hasattr(device.state, 'nodes')
             else False
         ),
     ),
@@ -61,7 +75,7 @@ BINARY_SENSORS: tuple[AnovaOvenBinarySensorEntityDescription, ...] = (
         device_class=BinarySensorDeviceClass.PROBLEM,
         is_on_fn=lambda device: (
             device.state.nodes.get("waterTank", {}).get("low", False)
-            if device.state
+            if hasattr(device, 'state') and hasattr(device.state, 'nodes')
             else False
         ),
     ),
@@ -71,7 +85,7 @@ BINARY_SENSORS: tuple[AnovaOvenBinarySensorEntityDescription, ...] = (
         device_class=BinarySensorDeviceClass.CONNECTIVITY,
         is_on_fn=lambda device: (
             device.state.nodes.get("probe", {}).get("connected", False)
-            if device.state
+            if hasattr(device, 'state') and hasattr(device.state, 'nodes')
             else False
         ),
     ),
@@ -81,7 +95,7 @@ BINARY_SENSORS: tuple[AnovaOvenBinarySensorEntityDescription, ...] = (
         device_class=BinarySensorDeviceClass.OPENING,
         is_on_fn=lambda device: (
             device.state.nodes.get("exhaustVent", {}).get("state") == "open"
-            if device.state
+            if hasattr(device, 'state') and hasattr(device.state, 'nodes')
             else False
         ),
     ),
