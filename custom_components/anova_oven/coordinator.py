@@ -96,16 +96,21 @@ class AnovaOvenCoordinator(DataUpdateCoordinator[dict[str, Device]]):
     async def _async_update_data(self) -> dict[str, Device]:
         """Fetch data from Anova."""
         try:
+            _LOGGER.debug("Starting _async_update_data. Setup complete: %s", self._setup_complete)
             if not self._setup_complete:
+                _LOGGER.debug("Performing initial setup...")
                 await self._async_setup()
                 # Do initial discovery
+                _LOGGER.debug("Calling discover_devices with timeout=10.0")
                 devices = await self.oven.discover_devices(timeout=10.0)
+                _LOGGER.debug("Discovery returned %d devices", len(devices))
                 # Convert to dictionary keyed by device ID
                 device_dict = {device.cooker_id: device for device in devices}
                 return device_dict
 
             # After initial setup, just return cached devices from the SDK
             # The WebSocket is already updating the oven._devices dict in real-time
+            _LOGGER.debug("Returning cached devices. Count: %d", len(self.oven._devices))
             device_dict = {device_id: device for device_id, device in self.oven._devices.items()}
 
             return device_dict
