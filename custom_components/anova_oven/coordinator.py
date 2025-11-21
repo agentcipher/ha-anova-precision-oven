@@ -98,12 +98,15 @@ class AnovaOvenCoordinator(DataUpdateCoordinator[dict[str, Device]]):
         try:
             if not self._setup_complete:
                 await self._async_setup()
+                # Do initial discovery
+                devices = await self.oven.discover_devices(timeout=2.0)
+                # Convert to dictionary keyed by device ID
+                device_dict = {device.cooker_id: device for device in devices}
+                return device_dict
 
-            # Discover/update devices
-            devices = await self.oven.discover_devices(timeout=2.0)
-
-            # Convert to dictionary keyed by device ID
-            device_dict = {device.cooker_id: device for device in devices}
+            # After initial setup, just return cached devices from the SDK
+            # The WebSocket is already updating the oven._devices dict in real-time
+            device_dict = {device_id: device for device_id, device in self.oven._devices.items()}
 
             return device_dict
 
