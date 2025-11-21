@@ -72,6 +72,32 @@ class AnovaOvenCoordinator(DataUpdateCoordinator[dict[str, Device]]):
 
         self._setup_complete = True
 
+    async def _load_recipes(self) -> None:
+        """Load recipe library from YAML file."""
+        try:
+            # Try custom path first
+            recipes_path = self.entry.data.get(CONF_RECIPES_PATH)
+            if recipes_path:
+                self.recipe_library = await self.hass.async_add_executor_job(
+                    RecipeLibrary.from_yaml_file, recipes_path
+                )
+                _LOGGER.info("Loaded %d recipes from %s", len(self.recipe_library.recipes), recipes_path)
+            else:
+                # Try default location in config directory
+                config_path = self.hass.config.path(RECIPES_FILE)
+                try:
+                    self.recipe_library = await self.hass.async_add_executor_job(
+                        RecipeLibrary.from_yaml_file, config_path
+                    )
+                    _LOGGER.info("Loaded %d recipes from config directory", len(self.recipe_library.recipes))
+                except FileNotFoundError:
+                    # Create empty library
+                    self.recipe_library = RecipeLibrary(recipes={})
+                    _LOGGER.info("No recipes file found, using empty library")
+        except Exception as err:
+            _LOGGER.error("Failed to load recipes: %s", err)
+            self.recipe_library = RecipeLibrary(recipes={})
+
     async def _async_update_data(self) -> dict[str, Device]:
         """Fetch data from Anova."""
         try:
