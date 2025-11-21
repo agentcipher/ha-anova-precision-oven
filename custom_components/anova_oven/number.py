@@ -46,12 +46,16 @@ class AnovaOvenProbeTarget(AnovaOvenEntity, NumberEntity):
     def native_value(self) -> float | None:
         """Return the probe target temperature."""
         device = self.coordinator.get_device(self._device_id)
-        if not device or not device.state:
+        if not device:
             return None
 
-        probe = device.state.nodes.get("probe", {})
-        setpoint = probe.get("setpoint", {})
-        return setpoint.get("celsius")
+        # Try detailed state if available
+        if hasattr(device, 'state') and hasattr(device.state, 'nodes'):
+            probe = device.state.nodes.get("probe", {})
+            setpoint = probe.get("setpoint", {})
+            return setpoint.get("celsius")
+
+        return None
 
     @property
     def available(self) -> bool:
@@ -60,12 +64,16 @@ class AnovaOvenProbeTarget(AnovaOvenEntity, NumberEntity):
             return False
 
         device = self.coordinator.get_device(self._device_id)
-        if not device or not device.state:
+        if not device:
             return False
 
-        # Available if probe is connected
-        probe = device.state.nodes.get("probe", {})
-        return probe.get("connected", False)
+        # Available if probe is connected (only for detailed state)
+        if hasattr(device, 'state') and hasattr(device.state, 'nodes'):
+            probe = device.state.nodes.get("probe", {})
+            return probe.get("connected", False)
+
+        # Default to unavailable for simple state
+        return False
 
     async def async_set_native_value(self, value: float) -> None:
         """Set probe target temperature."""
