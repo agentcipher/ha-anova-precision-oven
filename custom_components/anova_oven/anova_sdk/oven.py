@@ -50,12 +50,24 @@ class AnovaOven:
             token: API token (required, or set via ANOVA_TOKEN env var)
             environment: Override environment (dev/staging/production)
         """
-        # Set token before environment switching to avoid validation errors
+        # Temporarily disable validators to allow setting token and environment
+        original_validators = settings._kwargs.get('validators', [])
+        settings._kwargs['validators'] = []
+
+        # Force settings initialization without validation
+        if not hasattr(settings, '_wrapped'):
+            _ = settings.current_env
+
+        # Set token and environment
         if token:
             settings.set('token', token)
 
         if environment:
             settings.setenv(environment)
+
+        # Re-enable validators and validate
+        settings._kwargs['validators'] = original_validators
+        settings.validators.register(*original_validators)
 
         try:
             settings.validators.validate_all()
