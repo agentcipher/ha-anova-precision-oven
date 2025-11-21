@@ -116,8 +116,11 @@ class AnovaOven:
         return devices
 
     def _handle_device_list(self, data: Dict[str, Any]) -> None:
-        """Handle device discovery messages."""
-        if data.get('command') == 'EVENT_APO_WIFI_LIST':
+        """Handle device discovery and state update messages."""
+        command = data.get('command')
+
+        if command == 'EVENT_APO_WIFI_LIST':
+            # Initial device discovery
             payload = data.get('payload', [])
             for device_data in payload:
                 try:
@@ -126,6 +129,25 @@ class AnovaOven:
                     self.logger.info(f"  → {device.name} ({device.oven_version.value})")
                 except ValueError as e:
                     self.logger.error(f"Device validation error: {e}")
+
+        elif command == 'EVENT_APO_STATE':
+            # Device state update - contains full state with nodes
+            payload = data.get('payload', {})
+            device_id = payload.get('id')
+
+            if device_id and device_id in self._devices:
+                # Update existing device with new state
+                try:
+                    # Preserve existing device info but update with new state data
+                    existing = self._devices[device_id]
+
+                    # Update state with the full payload which includes nodes
+                    if 'state' in payload:
+                        existing.state = payload['state']
+
+                    self.logger.debug(f"Updated state for device {device_id}")
+                except Exception as e:
+                    self.logger.error(f"Failed to update device state: {e}")
 
     def get_device(self, device_id: str) -> Device:
         """Get device by ID."""

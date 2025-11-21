@@ -414,7 +414,8 @@ class Device(BaseModel):
     name: str = Field(..., description="Device name")
     paired_at: str = Field(..., alias="pairedAt", description="Pairing timestamp")
     device_type: OvenVersion = Field(..., alias="type", description="Device type")
-    state: Union[DeviceState, DeviceDetailedState] = Field(DeviceState.IDLE, description="Current state")
+    state: Union[DeviceState, DeviceDetailedState, Dict[str, Any]] = Field(DeviceState.IDLE,
+                                                                           description="Current state")
     current_temperature: Optional[float] = Field(None, description="Current temp")
     target_temperature: Optional[float] = Field(None, description="Target temp")
     last_update: Optional[datetime] = Field(None, description="Last update time")
@@ -434,6 +435,9 @@ class Device(BaseModel):
         """Check if currently cooking."""
         if isinstance(self.state, DeviceState):
             return self.state in [DeviceState.COOKING, DeviceState.PREHEATING]
+        elif isinstance(self.state, dict):
+            state_val = self.state.get('state', '').lower()
+            return state_val in ['cooking', 'preheating']
         return False
 
 
