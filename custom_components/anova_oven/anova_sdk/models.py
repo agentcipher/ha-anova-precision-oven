@@ -398,12 +398,128 @@ class CookStage(BaseModel):
             )
 
 
+# ============================================================================
+# STATE NODE MODELS
+# ============================================================================
+
+class TemperatureInfo(BaseModel):
+    """Temperature information (current and setpoint)."""
+    model_config = ConfigDict(frozen=False)
+
+    celsius: Optional[float] = Field(None, description="Temperature in Celsius")
+    fahrenheit: Optional[float] = Field(None, description="Temperature in Fahrenheit")
+
+    @property
+    def value(self) -> float | None:
+        """Get best available temperature value (prefer Celsius)."""
+        return self.celsius if self.celsius is not None else self.fahrenheit
+
+
+class TemperatureBulb(BaseModel):
+    """Temperature bulb status."""
+    model_config = ConfigDict(frozen=False)
+
+    current: TemperatureInfo = Field(default_factory=TemperatureInfo)
+    setpoint: TemperatureInfo = Field(default_factory=TemperatureInfo)
+
+
+class TemperatureBulbs(BaseModel):
+    """Temperature bulbs container."""
+    model_config = ConfigDict(frozen=False)
+
+    mode: TemperatureMode = Field(TemperatureMode.DRY, description="Current mode")
+    dry: TemperatureBulb = Field(default_factory=TemperatureBulb)
+    wet: TemperatureBulb = Field(default_factory=TemperatureBulb)
+
+
+class TimerNode(BaseModel):
+    """Timer status."""
+    model_config = ConfigDict(frozen=False)
+
+    mode: str = Field("idle", description="Timer mode")
+    initial: int = Field(0, description="Initial duration")
+    current: int = Field(0, description="Current remaining time")
+    
+    @property
+    def is_running(self) -> bool:
+        return self.mode != "idle"
+
+
+class ProbeNode(BaseModel):
+    """Probe status."""
+    model_config = ConfigDict(frozen=False)
+
+    connected: bool = Field(False, description="Is probe connected")
+    current: TemperatureInfo = Field(default_factory=TemperatureInfo)
+    setpoint: TemperatureInfo = Field(default_factory=TemperatureInfo)
+
+
+class SteamNode(BaseModel):
+    """Steam generator status."""
+    model_config = ConfigDict(frozen=False)
+
+    mode: str = Field("idle", description="Steam mode")
+    relative_output: Dict[str, Any] = Field(default_factory=dict, alias="relativeOutput")
+    
+    @property
+    def percentage(self) -> int | None:
+        return self.relative_output.get("percentage")
+
+
+class DoorNode(BaseModel):
+    """Door status."""
+    model_config = ConfigDict(frozen=False)
+
+    open: bool = Field(False, description="Is door open")
+    closed: bool = Field(True, description="Is door closed")
+
+
+class WaterTankNode(BaseModel):
+    """Water tank status."""
+    model_config = ConfigDict(frozen=False)
+
+    low: bool = Field(False, description="Is water low")
+
+
+class ExhaustVentNode(BaseModel):
+    """Exhaust vent status."""
+    model_config = ConfigDict(frozen=False)
+
+    state: str = Field("closed", description="Vent state")
+    
+    @property
+    def is_open(self) -> bool:
+        return self.state == "open"
+
+
+class FanNode(BaseModel):
+    """Fan status."""
+    model_config = ConfigDict(frozen=False)
+    
+    speed: int = Field(100, description="Fan speed percentage")
+
+
+class DeviceNodes(BaseModel):
+    """Collection of all device state nodes."""
+    model_config = ConfigDict(frozen=False, extra='allow')
+
+    temperature_bulbs: TemperatureBulbs = Field(default_factory=TemperatureBulbs, alias="temperatureBulbs")
+    timer: TimerNode = Field(default_factory=TimerNode)
+    probe: ProbeNode = Field(default_factory=ProbeNode)
+    steam_generators: SteamNode = Field(default_factory=SteamNode, alias="steamGenerators")
+    door: DoorNode = Field(default_factory=DoorNode)
+    water_tank: WaterTankNode = Field(default_factory=WaterTankNode, alias="waterTank")
+    exhaust_vent: ExhaustVentNode = Field(default_factory=ExhaustVentNode, alias="exhaustVent")
+    fan: FanNode = Field(default_factory=FanNode)
+
+
 class DeviceDetailedState(BaseModel):
     """Detailed device state with nodes and cook information."""
     model_config = ConfigDict(frozen=False, extra='allow')
 
-    nodes: Dict[str, Any] = Field(default_factory=dict, description="State nodes")
+    nodes: DeviceNodes = Field(default_factory=DeviceNodes, description="State nodes")
     cook: Optional[Any] = Field(None, description="Current cook information")
+    state: Optional[str] = Field(None, description="Overall state string")
 
 
 class Device(BaseModel):
@@ -435,20 +551,35 @@ class Device(BaseModel):
         """Check if currently cooking."""
         if isinstance(self.state, DeviceState):
             return self.state in [DeviceState.COOKING, DeviceState.PREHEATING]
-        elif isinstance(self.state, dict):
+        
+        # Handle detailed state object
+        if hasattr(self.state, 'state') and isinstance(self.state.state, str):
+             return self.state.state.lower() in ['cooking', 'preheating']
+             
+        # Handle dict (fallback)
+        if isinstance(self.state, dict):
             state_val = self.state.get('state', '')
             if isinstance(state_val, str):
                 return state_val.lower() in ['cooking', 'preheating']
+                
         return False
 
     @property
-    def state_nodes(self) -> Dict[str, Any]:
+    def nodes(self) -> DeviceNodes:
         """Get state nodes safely."""
-        if isinstance(self.state, dict):
-            return self.state.get('nodes', {})
-        if hasattr(self.state, 'nodes'):
+        if isinstance(self.state, DeviceDetailedState):
             return self.state.nodes
-        return {}
+        # If we have a dict or enum, return empty nodes
+        return DeviceNodes()
+        
+    @property
+    def status(self) -> str:
+        """Get string status."""
+        if isinstance(self.state, DeviceState):
+            return self.state.value
+        if hasattr(self.state, 'state') and self.state.state:
+            return self.state.state
+        return "unknown"
 
 
 class RecipeStageConfig(BaseModel):

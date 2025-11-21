@@ -58,16 +58,7 @@ class AnovaOvenCookingSwitch(AnovaOvenEntity, SwitchEntity):
         if not device:
             return False
 
-        # Handle DeviceState enum
-        if hasattr(device.state, 'value'):
-            return device.state.value in ("cooking", "preheating")
-
-        # Handle detailed state
-        if hasattr(device.state, 'state'):
-            return device.state.state in ("cooking", "preheating")
-
-        # Fallback to is_cooking property
-        return device.is_cooking if hasattr(device, 'is_cooking') else False
+        return device.is_cooking
 
     async def async_turn_on(self, **kwargs) -> None:
         """Turn on cooking."""
@@ -77,14 +68,10 @@ class AnovaOvenCookingSwitch(AnovaOvenEntity, SwitchEntity):
         # Get last known temperature or use default
         target_temp = 180.0
         if device:
-            # Try to get from simple model first
-            if hasattr(device, 'target_temperature') and device.target_temperature:
+            if device.target_temperature:
                 target_temp = device.target_temperature
-            # Try detailed state
-            else:
-                temp_bulbs = device.state_nodes.get("temperatureBulbs", {})
-                setpoint = temp_bulbs.get("dry", {}).get("setpoint", {})
-                target_temp = setpoint.get("celsius", target_temp)
+            elif device.nodes.temperature_bulbs.mode == "dry":
+                target_temp = device.nodes.temperature_bulbs.dry.setpoint.value or target_temp
 
         try:
             await self.coordinator.async_start_cook(

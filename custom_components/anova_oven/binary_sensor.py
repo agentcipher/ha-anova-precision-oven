@@ -31,66 +31,37 @@ BINARY_SENSORS: tuple[AnovaOvenBinarySensorEntityDescription, ...] = (
         key="cooking",
         name="Cooking",
         device_class=BinarySensorDeviceClass.RUNNING,
-        is_on_fn=lambda device: (
-            device.is_cooking
-            if hasattr(device, 'is_cooking')
-            else (
-                device.state.value.lower() in [STATE_COOKING, STATE_PREHEATING]
-                if hasattr(device.state, 'value')
-                else (
-                    device.state.state.lower() in [STATE_COOKING, STATE_PREHEATING]
-                    if hasattr(device.state, 'state')
-                    else False
-                )
-            )
-        ),
+        is_on_fn=lambda device: device.is_cooking,
     ),
     AnovaOvenBinarySensorEntityDescription(
         key="preheating",
         name="Preheating",
         device_class=BinarySensorDeviceClass.HEAT,
-        is_on_fn=lambda device: (
-            device.state.value.lower() == STATE_PREHEATING
-            if hasattr(device.state, 'value')
-            else (
-                device.state.state.lower() == STATE_PREHEATING
-                if hasattr(device.state, 'state')
-                else False
-            )
-        ),
+        is_on_fn=lambda device: device.status.lower() == STATE_PREHEATING,
     ),
     AnovaOvenBinarySensorEntityDescription(
         key="door_open",
         name="Door",
         device_class=BinarySensorDeviceClass.DOOR,
-        is_on_fn=lambda device: (
-            device.state_nodes.get("door", {}).get("open", False)
-        ),
+        is_on_fn=lambda device: device.nodes.door.open,
     ),
     AnovaOvenBinarySensorEntityDescription(
         key="water_low",
         name="Water Low",
         device_class=BinarySensorDeviceClass.PROBLEM,
-        is_on_fn=lambda device: (
-            device.state_nodes.get("waterTank", {}).get("low", False)
-        ),
+        is_on_fn=lambda device: device.nodes.water_tank.low,
     ),
     AnovaOvenBinarySensorEntityDescription(
         key="probe_connected",
         name="Probe Connected",
         device_class=BinarySensorDeviceClass.CONNECTIVITY,
-        is_on_fn=lambda device: (
-            device.state_nodes.get("probe", {}).get("connected", False)
-            or device.state_nodes.get("probe", {}).get("current") is not None
-        ),
+        is_on_fn=lambda device: device.nodes.probe.connected or device.nodes.probe.current.value is not None,
     ),
     AnovaOvenBinarySensorEntityDescription(
         key="vent_open",
         name="Vent",
         device_class=BinarySensorDeviceClass.OPENING,
-        is_on_fn=lambda device: (
-            device.state_nodes.get("exhaustVent", {}).get("state") == "open"
-        ),
+        is_on_fn=lambda device: device.nodes.exhaust_vent.is_open,
     ),
 )
 

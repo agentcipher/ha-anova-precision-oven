@@ -44,12 +44,11 @@ SENSORS: tuple[AnovaOvenSensorEntityDescription, ...] = (
         native_unit_of_measurement=UnitOfTemperature.CELSIUS,
         value_fn=lambda device: (
             device.current_temperature
-            if hasattr(device, 'current_temperature') and device.current_temperature is not None
+            if device.current_temperature is not None
             else (
-                device.state_nodes.get("temperatureBulbs", {})
-                .get(device.state_nodes.get("temperatureBulbs", {}).get("mode", MODE_DRY), {})
-                .get("current", {})
-                .get("celsius")
+                device.nodes.temperature_bulbs.dry.current.value
+                if device.nodes.temperature_bulbs.mode == "dry"
+                else device.nodes.temperature_bulbs.wet.current.value
             )
         ),
     ),
@@ -61,12 +60,11 @@ SENSORS: tuple[AnovaOvenSensorEntityDescription, ...] = (
         native_unit_of_measurement=UnitOfTemperature.CELSIUS,
         value_fn=lambda device: (
             device.target_temperature
-            if hasattr(device, 'target_temperature') and device.target_temperature is not None
+            if device.target_temperature is not None
             else (
-                device.state_nodes.get("temperatureBulbs", {})
-                .get(device.state_nodes.get("temperatureBulbs", {}).get("mode", MODE_DRY), {})
-                .get("setpoint", {})
-                .get("celsius")
+                device.nodes.temperature_bulbs.dry.setpoint.value
+                if device.nodes.temperature_bulbs.mode == "dry"
+                else device.nodes.temperature_bulbs.wet.setpoint.value
             )
         ),
     ),
@@ -76,13 +74,8 @@ SENSORS: tuple[AnovaOvenSensorEntityDescription, ...] = (
         device_class=SensorDeviceClass.TEMPERATURE,
         state_class=SensorStateClass.MEASUREMENT,
         native_unit_of_measurement=UnitOfTemperature.CELSIUS,
-        value_fn=lambda device: (
-            device.state_nodes.get("probe", {}).get("current", {}).get("celsius")
-        ),
-        available_fn=lambda device: (
-            device.state_nodes.get("probe") is not None
-            and device.state_nodes.get("probe", {}).get("current") is not None
-        ),
+        value_fn=lambda device: device.nodes.probe.current.value,
+        available_fn=lambda device: device.nodes.probe.connected or device.nodes.probe.current.value is not None,
     ),
     AnovaOvenSensorEntityDescription(
         key="probe_target",
@@ -90,13 +83,8 @@ SENSORS: tuple[AnovaOvenSensorEntityDescription, ...] = (
         device_class=SensorDeviceClass.TEMPERATURE,
         state_class=SensorStateClass.MEASUREMENT,
         native_unit_of_measurement=UnitOfTemperature.CELSIUS,
-        value_fn=lambda device: (
-            device.state_nodes.get("probe", {}).get("setpoint", {}).get("celsius")
-        ),
-        available_fn=lambda device: (
-            device.state_nodes.get("probe") is not None
-            and device.state_nodes.get("probe", {}).get("setpoint") is not None
-        ),
+        value_fn=lambda device: device.nodes.probe.setpoint.value,
+        available_fn=lambda device: device.nodes.probe.connected or device.nodes.probe.setpoint.value is not None,
     ),
     AnovaOvenSensorEntityDescription(
         key="timer_remaining",
@@ -104,98 +92,61 @@ SENSORS: tuple[AnovaOvenSensorEntityDescription, ...] = (
         device_class=SensorDeviceClass.DURATION,
         state_class=SensorStateClass.MEASUREMENT,
         native_unit_of_measurement=UnitOfTime.SECONDS,
-        value_fn=lambda device: (
-            device.state_nodes.get("timer", {}).get("current")
-        ),
-        available_fn=lambda device: (
-            device.state_nodes.get("timer") is not None
-            and device.state_nodes.get("timer", {}).get("mode") != "idle"
-        ),
+        value_fn=lambda device: device.nodes.timer.current,
+        available_fn=lambda device: device.nodes.timer.is_running,
     ),
     AnovaOvenSensorEntityDescription(
         key="timer_initial",
         name="Timer Initial",
         device_class=SensorDeviceClass.DURATION,
         native_unit_of_measurement=UnitOfTime.SECONDS,
-        value_fn=lambda device: (
-            device.state_nodes.get("timer", {}).get("initial")
-        ),
-        available_fn=lambda device: (
-            device.state_nodes.get("timer") is not None
-            and device.state_nodes.get("timer", {}).get("mode") != "idle"
-        ),
+        value_fn=lambda device: device.nodes.timer.initial,
+        available_fn=lambda device: device.nodes.timer.is_running,
     ),
     AnovaOvenSensorEntityDescription(
         key="steam_percentage",
         name="Steam Percentage",
         state_class=SensorStateClass.MEASUREMENT,
         native_unit_of_measurement=PERCENTAGE,
-        value_fn=lambda device: (
-            device.state_nodes.get("steamGenerators", {})
-            .get("relativeOutput", {})
-            .get("percentage")
-        ),
-        available_fn=lambda device: (
-            device.state_nodes.get("steamGenerators") is not None
-            and device.state_nodes.get("steamGenerators", {}).get("mode") != "idle"
-        ),
+        value_fn=lambda device: device.nodes.steam_generators.percentage,
+        available_fn=lambda device: device.nodes.steam_generators.mode != "idle",
     ),
     AnovaOvenSensorEntityDescription(
         key="fan_speed",
         name="Fan Speed",
         state_class=SensorStateClass.MEASUREMENT,
         native_unit_of_measurement=PERCENTAGE,
-        value_fn=lambda device: (
-            device.state_nodes.get("fan", {}).get("speed")
-        ),
+        value_fn=lambda device: device.nodes.fan.speed,
     ),
     AnovaOvenSensorEntityDescription(
         key="current_stage",
         name="Current Stage",
         value_fn=lambda device: (
             device.state.cook.current_stage
-            if hasattr(device, 'state') and hasattr(device.state, 'cook') and device.state.cook
+            if hasattr(device.state, 'cook') and device.state.cook
             else None
         ),
-        available_fn=lambda device: (
-            hasattr(device, 'state')
-            and hasattr(device.state, 'cook')
-            and device.state.cook is not None
-            and hasattr(device.state, 'state')
-            and device.state.state.lower() != STATE_IDLE
-        ),
+        available_fn=lambda device: device.is_cooking,
     ),
     AnovaOvenSensorEntityDescription(
         key="total_stages",
         name="Total Stages",
         value_fn=lambda device: (
             len(device.state.cook.stages)
-            if hasattr(device, 'state') and hasattr(device.state, 'cook') and device.state.cook and hasattr(device.state.cook, 'stages') and device.state.cook.stages
+            if hasattr(device.state, 'cook') and device.state.cook and hasattr(device.state.cook, 'stages') and device.state.cook.stages
             else None
         ),
-        available_fn=lambda device: (
-            hasattr(device, 'state')
-            and hasattr(device.state, 'cook')
-            and device.state.cook is not None
-            and hasattr(device.state, 'state')
-            and device.state.state.lower() != STATE_IDLE
-        ),
+        available_fn=lambda device: device.is_cooking,
     ),
     AnovaOvenSensorEntityDescription(
         key="recipe_name",
         name="Recipe Name",
         value_fn=lambda device: (
             device.state.cook.name
-            if hasattr(device, 'state') and hasattr(device.state, 'cook') and device.state.cook
+            if hasattr(device.state, 'cook') and device.state.cook
             else None
         ),
-        available_fn=lambda device: (
-            hasattr(device, 'state')
-            and hasattr(device.state, 'cook')
-            and device.state.cook is not None
-            and hasattr(device.state, 'state')
-            and device.state.state.lower() != STATE_IDLE
-        ),
+        available_fn=lambda device: device.is_cooking,
     ),
 )
 

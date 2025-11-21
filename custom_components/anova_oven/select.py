@@ -113,7 +113,7 @@ class AnovaOvenTemperatureUnitSelect(AnovaOvenEntity, SelectEntity):
             return "C"
 
         # Try to get temperature unit from detailed state
-        if hasattr(device, 'state') and hasattr(device.state, 'temperature_unit'):
+        if hasattr(device.state, 'temperature_unit'):
             return device.state.temperature_unit or "C"
 
         return "C"
