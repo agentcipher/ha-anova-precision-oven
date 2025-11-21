@@ -69,10 +69,17 @@ class AnovaOvenClimate(AnovaOvenEntity, ClimateEntity):
     def hvac_mode(self) -> HVACMode:
         """Return current HVAC mode."""
         device = self.coordinator.get_device(self._device_id)
-        if not device or not device.state:
+        if not device:
             return HVACMode.OFF
 
-        state = device.state.state.lower()
+        # Handle both simple DeviceState enum and detailed state
+        if hasattr(device.state, 'value'):
+            # It's a DeviceState enum
+            state = device.state.value.lower()
+        else:
+            # It's a detailed state object, state might be elsewhere
+            return HVACMode.OFF if not device.is_cooking else HVACMode.HEAT
+
         if state in [STATE_COOKING, STATE_PREHEATING]:
             return HVACMode.HEAT
         return HVACMode.OFF
@@ -81,16 +88,21 @@ class AnovaOvenClimate(AnovaOvenEntity, ClimateEntity):
     def current_temperature(self) -> float | None:
         """Return the current temperature."""
         device = self.coordinator.get_device(self._device_id)
-        if not device or not device.state:
+        if not device:
             return None
 
-        # Get temperature based on current mode
-        temp_bulbs = device.state.nodes.get("temperatureBulbs", {})
-        mode = temp_bulbs.get("mode", MODE_DRY)
+        # Use simple current_temperature if available
+        if hasattr(device, 'current_temperature') and device.current_temperature is not None:
+            return device.current_temperature
 
-        if mode in temp_bulbs:
-            current = temp_bulbs[mode].get("current", {})
-            return current.get("celsius")
+        # Try detailed state if available
+        if hasattr(device, 'state') and hasattr(device.state, 'nodes'):
+            temp_bulbs = device.state.nodes.get("temperatureBulbs", {})
+            mode = temp_bulbs.get("mode", MODE_DRY)
+
+            if mode in temp_bulbs:
+                current = temp_bulbs[mode].get("current", {})
+                return current.get("celsius")
 
         return None
 
@@ -98,15 +110,21 @@ class AnovaOvenClimate(AnovaOvenEntity, ClimateEntity):
     def target_temperature(self) -> float | None:
         """Return the target temperature."""
         device = self.coordinator.get_device(self._device_id)
-        if not device or not device.state:
+        if not device:
             return None
 
-        temp_bulbs = device.state.nodes.get("temperatureBulbs", {})
-        mode = temp_bulbs.get("mode", MODE_DRY)
+        # Use simple target_temperature if available
+        if hasattr(device, 'target_temperature') and device.target_temperature is not None:
+            return device.target_temperature
 
-        if mode in temp_bulbs:
-            setpoint = temp_bulbs[mode].get("setpoint", {})
-            return setpoint.get("celsius")
+        # Try detailed state if available
+        if hasattr(device, 'state') and hasattr(device.state, 'nodes'):
+            temp_bulbs = device.state.nodes.get("temperatureBulbs", {})
+            mode = temp_bulbs.get("mode", MODE_DRY)
+
+            if mode in temp_bulbs:
+                setpoint = temp_bulbs[mode].get("setpoint", {})
+                return setpoint.get("celsius")
 
         return None
 
@@ -114,20 +132,24 @@ class AnovaOvenClimate(AnovaOvenEntity, ClimateEntity):
     def extra_state_attributes(self) -> dict[str, Any]:
         """Return additional state attributes."""
         device = self.coordinator.get_device(self._device_id)
-        if not device or not device.state:
+        if not device:
             return {}
 
         attrs = {
             ATTR_OVEN_VERSION: device.oven_version.value,
         }
 
+        # Only try to access detailed state if it exists
+        if not hasattr(device, 'state') or not hasattr(device.state, 'nodes'):
+            return attrs
+
         # Add cooking information if available
-        if device.state.cook:
+        if hasattr(device.state, 'cook') and device.state.cook:
             cook = device.state.cook
             attrs[ATTR_RECIPE_NAME] = cook.name or "Manual Cook"
-            if cook.stages:
+            if hasattr(cook, 'stages') and cook.stages:
                 attrs[ATTR_STAGES] = len(cook.stages)
-                attrs[ATTR_CURRENT_STAGE] = cook.current_stage or 0
+                attrs[ATTR_CURRENT_STAGE] = getattr(cook, 'current_stage', 0) or 0
 
         # Add probe temperature if available
         probe_node = device.state.nodes.get("probe", {})
@@ -165,7 +187,7 @@ class AnovaOvenClimate(AnovaOvenEntity, ClimateEntity):
         # Determine duration from timer if currently cooking
         duration = None
         device = self.coordinator.get_device(self._device_id)
-        if device and device.state:
+        if device and hasattr(device, 'state') and hasattr(device.state, 'nodes'):
             timer_node = device.state.nodes.get("timer", {})
             if timer_node and timer_node.get("mode") != "idle":
                 duration = timer_node.get("initial")

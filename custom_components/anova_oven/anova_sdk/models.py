@@ -398,15 +398,23 @@ class CookStage(BaseModel):
             )
 
 
+class DeviceDetailedState(BaseModel):
+    """Detailed device state with nodes and cook information."""
+    model_config = ConfigDict(frozen=False, extra='allow')
+
+    nodes: Dict[str, Any] = Field(default_factory=dict, description="State nodes")
+    cook: Optional[Any] = Field(None, description="Current cook information")
+
+
 class Device(BaseModel):
     """Anova device representation."""
-    model_config = ConfigDict(frozen=False)
+    model_config = ConfigDict(frozen=False, extra='allow')
 
     cooker_id: str = Field(..., alias="cookerId", description="Device ID")
     name: str = Field(..., description="Device name")
     paired_at: str = Field(..., alias="pairedAt", description="Pairing timestamp")
     device_type: OvenVersion = Field(..., alias="type", description="Device type")
-    state: DeviceState = Field(DeviceState.IDLE, description="Current state")
+    state: Union[DeviceState, DeviceDetailedState] = Field(DeviceState.IDLE, description="Current state")
     current_temperature: Optional[float] = Field(None, description="Current temp")
     target_temperature: Optional[float] = Field(None, description="Target temp")
     last_update: Optional[datetime] = Field(None, description="Last update time")
@@ -424,7 +432,9 @@ class Device(BaseModel):
     @property
     def is_cooking(self) -> bool:
         """Check if currently cooking."""
-        return self.state in [DeviceState.COOKING, DeviceState.PREHEATING]
+        if isinstance(self.state, DeviceState):
+            return self.state in [DeviceState.COOKING, DeviceState.PREHEATING]
+        return False
 
 
 class RecipeStageConfig(BaseModel):
