@@ -436,8 +436,9 @@ class Device(BaseModel):
         if isinstance(self.state, DeviceState):
             return self.state in [DeviceState.COOKING, DeviceState.PREHEATING]
         elif isinstance(self.state, dict):
-            state_val = self.state.get('state', '').lower()
-            return state_val in ['cooking', 'preheating']
+            state_val = self.state.get('state', '')
+            if isinstance(state_val, str):
+                return state_val.lower() in ['cooking', 'preheating']
         return False
 
 
