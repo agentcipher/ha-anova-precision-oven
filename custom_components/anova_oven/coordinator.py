@@ -99,7 +99,7 @@ class AnovaOvenCoordinator(DataUpdateCoordinator[dict[str, Device]]):
             if not self._setup_complete:
                 await self._async_setup()
                 # Do initial discovery
-                devices = await self.oven.discover_devices(timeout=2.0)
+                devices = await self.oven.discover_devices(timeout=10.0)
                 # Convert to dictionary keyed by device ID
                 device_dict = {device.cooker_id: device for device in devices}
                 return device_dict
