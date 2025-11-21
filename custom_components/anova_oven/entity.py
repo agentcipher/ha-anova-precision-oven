@@ -39,7 +39,6 @@ class AnovaOvenEntity(CoordinatorEntity[AnovaOvenCoordinator]):
             name=device.name or f"Anova Oven {self._device_id}",
             manufacturer="Anova",
             model=f"Precision Oven {device.oven_version.value}",
-            sw_version=device.firmware_version,
         )
 
     @property
