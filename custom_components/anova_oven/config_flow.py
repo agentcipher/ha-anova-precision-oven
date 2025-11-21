@@ -52,14 +52,18 @@ async def validate_input(hass: HomeAssistant, data: dict[str, Any]) -> dict[str,
 
     # Try to connect and discover devices
     try:
-        async with AnovaOven(environment=data.get(CONF_ENVIRONMENT)) as oven:
-            # Override settings with user input
-            oven.client.ws_url = data.get(CONF_WS_URL, DEFAULT_WS_URL)
-            devices = await oven.discover_devices(timeout=5.0)
+        # FIX: Pass token during AnovaOven initialization, not after
+        async with AnovaOven(
+                token=data[CONF_TOKEN],
+                environment=data.get(CONF_ENVIRONMENT, "production")
+        ) as oven:
+            # Discover devices to validate connection
+            devices = await oven.discover_devices()
 
             if not devices:
                 raise CannotConnect("No devices found")
 
+            # Return info that you want to store in the config entry
             return {
                 "title": f"Anova Oven ({len(devices)} device(s))",
                 "device_count": len(devices),
