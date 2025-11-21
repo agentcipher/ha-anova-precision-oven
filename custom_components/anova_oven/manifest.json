@@ -13,5 +13,5 @@
     "dynaconf>=3.2.0",
     "pyyaml>=6.0"
   ],
-  "version": "2025.11.1"
+  "version": "2025.11.2"
 }
