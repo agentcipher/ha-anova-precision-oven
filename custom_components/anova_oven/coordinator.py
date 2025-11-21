@@ -65,33 +65,12 @@ class AnovaOvenCoordinator(DataUpdateCoordinator[dict[str, Device]]):
         # Load recipe library
         await self._load_recipes()
 
-        self._setup_complete = True
+        # Do initial discovery
+        _LOGGER.error("DEBUG: Calling discover_devices with timeout=10.0")
+        devices = await self.oven.discover_devices(timeout=10.0)
+        _LOGGER.error("DEBUG: Discovery returned %d devices", len(devices))
 
-    async def _load_recipes(self) -> None:
-        """Load recipe library from YAML file."""
-        try:
-            # Try custom path first
-            recipes_path = self.entry.data.get(CONF_RECIPES_PATH)
-            if recipes_path:
-                self.recipe_library = await self.hass.async_add_executor_job(
-                    RecipeLibrary.from_yaml_file, recipes_path
-                )
-                _LOGGER.info("Loaded %d recipes from %s", len(self.recipe_library.recipes), recipes_path)
-            else:
-                # Try default location in config directory
-                config_path = self.hass.config.path(RECIPES_FILE)
-                try:
-                    self.recipe_library = await self.hass.async_add_executor_job(
-                        RecipeLibrary.from_yaml_file, config_path
-                    )
-                    _LOGGER.info("Loaded %d recipes from config directory", len(self.recipe_library.recipes))
-                except FileNotFoundError:
-                    # Create empty library
-                    self.recipe_library = RecipeLibrary(recipes={})
-                    _LOGGER.info("No recipes file found, using empty library")
-        except Exception as err:
-            _LOGGER.error("Failed to load recipes: %s", err)
-            self.recipe_library = RecipeLibrary(recipes={})
+        self._setup_complete = True
 
     async def _async_update_data(self) -> dict[str, Device]:
         """Fetch data from Anova."""
@@ -100,15 +79,8 @@ class AnovaOvenCoordinator(DataUpdateCoordinator[dict[str, Device]]):
             if not self._setup_complete:
                 _LOGGER.error("DEBUG: Performing initial setup...")
                 await self._async_setup()
-                _LOGGER.error("DEBUG: Setup finished. Calling discover_devices...")
-                # Do initial discovery
-                devices = await self.oven.discover_devices(timeout=10.0)
-                _LOGGER.error("DEBUG: Discovery returned %d devices", len(devices))
-                # Convert to dictionary keyed by device ID
-                device_dict = {device.cooker_id: device for device in devices}
-                return device_dict
 
-            # After initial setup, just return cached devices from the SDK
+            # Return cached devices from the SDK
             # The WebSocket is already updating the oven._devices dict in real-time
             _LOGGER.error("DEBUG: Returning cached devices. Count: %d", len(self.oven._devices))
             device_dict = {device_id: device for device_id, device in self.oven._devices.items()}
