@@ -1,0 +1,45 @@
+# Example settings.yaml for Anova Oven SDK
+# Place this file in your Home Assistant config directory or specify path during setup
+
+default:
+  # Your Anova API token (required)
+  # Get this from the Anova app or developer portal
+  token: "anova-your-token-here"
+  
+  # WebSocket URL (optional, uses default if not specified)
+  ws_url: "wss://devices.anovaculinary.io"
+  
+  # Timeout settings (optional)
+  connection_timeout: 30.0
+  command_timeout: 10.0
+  
+  # Logging (optional)
+  log_level: "INFO"
+  
+  # Display settings (optional)
+  default_temperature_unit: "C"  # C or F
+  display_both_units: true
+  
+  # Retry settings (optional)
+  max_retries: 3
+  retry_delay: 1.0
+  retry_backoff: 2.0
+  
+  # Auto-reconnect (optional)
+  auto_reconnect: true
+  
+  # Supported accessories (optional)
+  supported_accessories:
+    - "APO"
+
+# Environment-specific settings (optional)
+dev:
+  ws_url: "wss://dev.devices.anovaculinary.io"
+  log_level: "DEBUG"
+
+staging:
+  ws_url: "wss://staging.devices.anovaculinary.io"
+  log_level: "INFO"
+
+production:
+  # Uses defaults

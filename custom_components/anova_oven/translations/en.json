@@ -1,0 +1,114 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Configure Anova Precision Oven",
+        "description": "Enter your Anova API credentials",
+        "data": {
+          "token": "API Token",
+          "ws_url": "WebSocket URL",
+          "environment": "Environment",
+          "recipes_path": "Recipes File Path (optional)"
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "Failed to connect to Anova servers",
+      "invalid_token": "Invalid API token format",
+      "unknown": "Unexpected error occurred"
+    },
+    "abort": {
+      "already_configured": "This device is already configured"
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "data": {
+          "ws_url": "WebSocket URL",
+          "recipes_path": "Recipes File Path"
+        }
+      }
+    }
+  },
+  "entity": {
+    "climate": {
+      "oven": {
+        "name": "Oven"
+      }
+    },
+    "sensor": {
+      "current_temperature": {
+        "name": "Current Temperature"
+      },
+      "target_temperature": {
+        "name": "Target Temperature"
+      },
+      "probe_temperature": {
+        "name": "Probe Temperature"
+      },
+      "probe_target": {
+        "name": "Probe Target"
+      },
+      "timer_remaining": {
+        "name": "Timer Remaining"
+      },
+      "timer_initial": {
+        "name": "Timer Initial"
+      },
+      "steam_percentage": {
+        "name": "Steam Percentage"
+      },
+      "fan_speed": {
+        "name": "Fan Speed"
+      },
+      "current_stage": {
+        "name": "Current Stage"
+      },
+      "total_stages": {
+        "name": "Total Stages"
+      },
+      "recipe_name": {
+        "name": "Recipe Name"
+      }
+    },
+    "binary_sensor": {
+      "cooking": {
+        "name": "Cooking"
+      },
+      "preheating": {
+        "name": "Preheating"
+      },
+      "door_open": {
+        "name": "Door"
+      },
+      "water_low": {
+        "name": "Water Low"
+      },
+      "probe_connected": {
+        "name": "Probe Connected"
+      },
+      "vent_open": {
+        "name": "Vent"
+      }
+    },
+    "button": {
+      "stop_cook": {
+        "name": "Stop Cook"
+      }
+    },
+    "select": {
+      "recipe_select": {
+        "name": "Recipe"
+      },
+      "temperature_unit": {
+        "name": "Temperature Unit"
+      }
+    },
+    "number": {
+      "probe_target": {
+        "name": "Probe Target"
+      }
+    }
+  }
+}

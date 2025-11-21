@@ -1,0 +1,7 @@
+{
+  "name": "Anova Precision Oven",
+  "render_readme": true,
+  "domains": ["climate", "sensor", "binary_sensor", "button", "select", "number"],
+  "iot_class": "Cloud Push",
+  "homeassistant": "2024.1.0"
+}

@@ -1,0 +1,139 @@
+start_cook:
+  name: Start Cook
+  description: Start cooking with custom parameters
+  target:
+    entity:
+      domain: climate
+  fields:
+    temperature:
+      name: Temperature
+      description: Target temperature
+      required: true
+      example: 200
+      selector:
+        number:
+          min: 25
+          max: 250
+          step: 1
+          unit_of_measurement: "°C"
+    temperature_unit:
+      name: Temperature Unit
+      description: Temperature unit (C or F)
+      default: "C"
+      selector:
+        select:
+          options:
+            - "C"
+            - "F"
+    duration:
+      name: Duration
+      description: Cook duration in seconds
+      required: false
+      example: 1800
+      selector:
+        number:
+          min: 0
+          max: 86400
+          step: 60
+          unit_of_measurement: "seconds"
+    mode:
+      name: Mode
+      description: Cooking mode (dry or wet)
+      default: "dry"
+      selector:
+        select:
+          options:
+            - "dry"
+            - "wet"
+    fan_speed:
+      name: Fan Speed
+      description: Fan speed percentage
+      default: 100
+      selector:
+        number:
+          min: 0
+          max: 100
+          step: 10
+          unit_of_measurement: "%"
+    vent_open:
+      name: Vent Open
+      description: Keep vent open during cooking
+      default: false
+      selector:
+        boolean:
+    rack_position:
+      name: Rack Position
+      description: Rack position (1-7)
+      default: 3
+      selector:
+        number:
+          min: 1
+          max: 7
+          step: 1
+
+stop_cook:
+  name: Stop Cook
+  description: Stop current cooking session
+  target:
+    entity:
+      domain: climate
+
+set_probe:
+  name: Set Probe Target
+  description: Set probe target temperature
+  target:
+    entity:
+      domain: climate
+  fields:
+    target:
+      name: Target Temperature
+      description: Probe target temperature
+      required: true
+      example: 65
+      selector:
+        number:
+          min: 1
+          max: 100
+          step: 0.5
+          unit_of_measurement: "°C"
+    temperature_unit:
+      name: Temperature Unit
+      description: Temperature unit (C or F)
+      default: "C"
+      selector:
+        select:
+          options:
+            - "C"
+            - "F"
+
+start_recipe:
+  name: Start Recipe
+  description: Start a recipe from the recipe library
+  target:
+    entity:
+      domain: climate
+  fields:
+    recipe_id:
+      name: Recipe ID
+      description: ID of the recipe to start
+      required: true
+      example: "perfect_toast_v1"
+      selector:
+        text:
+
+set_temperature_unit:
+  name: Set Temperature Unit
+  description: Set temperature display unit on the oven
+  target:
+    entity:
+      domain: climate
+  fields:
+    unit:
+      name: Unit
+      description: Temperature unit (C or F)
+      required: true
+      selector:
+        select:
+          options:
+            - "C"
+            - "F"
