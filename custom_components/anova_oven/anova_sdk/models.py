@@ -442,7 +442,7 @@ class Device(BaseModel):
         return False
 
     @property
-    def nodes(self) -> Dict[str, Any]:
+    def state_nodes(self) -> Dict[str, Any]:
         """Get state nodes safely."""
         if isinstance(self.state, dict):
             return self.state.get('nodes', {})

@@ -50,7 +50,7 @@ class AnovaOvenProbeTarget(AnovaOvenEntity, NumberEntity):
             return None
 
         # Try detailed state if available
-        probe = device.nodes.get("probe", {})
+        probe = device.state_nodes.get("probe", {})
         setpoint = probe.get("setpoint", {})
         return setpoint.get("celsius")
 
@@ -67,7 +67,7 @@ class AnovaOvenProbeTarget(AnovaOvenEntity, NumberEntity):
             return False
 
         # Available if probe is connected (only for detailed state)
-        probe = device.nodes.get("probe", {})
+        probe = device.state_nodes.get("probe", {})
         return probe.get("connected", False)
 
     async def async_set_native_value(self, value: float) -> None:

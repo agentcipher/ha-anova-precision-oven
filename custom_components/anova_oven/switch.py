@@ -82,7 +82,7 @@ class AnovaOvenCookingSwitch(AnovaOvenEntity, SwitchEntity):
                 target_temp = device.target_temperature
             # Try detailed state
             else:
-                temp_bulbs = device.nodes.get("temperatureBulbs", {})
+                temp_bulbs = device.state_nodes.get("temperatureBulbs", {})
                 setpoint = temp_bulbs.get("dry", {}).get("setpoint", {})
                 target_temp = setpoint.get("celsius", target_temp)
 

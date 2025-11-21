@@ -96,7 +96,7 @@ class AnovaOvenClimate(AnovaOvenEntity, ClimateEntity):
             return device.current_temperature
 
         # Try detailed state if available
-        temp_bulbs = device.nodes.get("temperatureBulbs", {})
+        temp_bulbs = device.state_nodes.get("temperatureBulbs", {})
         mode = temp_bulbs.get("mode", MODE_DRY)
 
         if mode in temp_bulbs:
@@ -117,7 +117,7 @@ class AnovaOvenClimate(AnovaOvenEntity, ClimateEntity):
             return device.target_temperature
 
         # Try detailed state if available
-        temp_bulbs = device.nodes.get("temperatureBulbs", {})
+        temp_bulbs = device.state_nodes.get("temperatureBulbs", {})
         mode = temp_bulbs.get("mode", MODE_DRY)
 
         if mode in temp_bulbs:
@@ -138,7 +138,7 @@ class AnovaOvenClimate(AnovaOvenEntity, ClimateEntity):
         }
 
         # Only try to access detailed state if it exists
-        if not device.nodes:
+        if not device.state_nodes:
             return attrs
 
         # Add cooking information if available
@@ -150,7 +150,7 @@ class AnovaOvenClimate(AnovaOvenEntity, ClimateEntity):
                 attrs[ATTR_CURRENT_STAGE] = getattr(cook, 'current_stage', 0) or 0
 
         # Add probe temperature if available
-        probe_node = device.nodes.get("probe", {})
+        probe_node = device.state_nodes.get("probe", {})
         if probe_node:
             probe_temp = probe_node.get("current", {}).get("celsius")
             if probe_temp is not None:
@@ -160,15 +160,15 @@ class AnovaOvenClimate(AnovaOvenEntity, ClimateEntity):
                 attrs["probe_target"] = probe_setpoint
 
         # Add steam information if in wet mode
-        temp_bulbs = device.nodes.get("temperatureBulbs", {})
+        temp_bulbs = device.state_nodes.get("temperatureBulbs", {})
         if temp_bulbs.get("mode") == MODE_WET:
-            steam = device.nodes.get("steamGenerators", {})
+            steam = device.state_nodes.get("steamGenerators", {})
             if steam:
                 attrs["steam_mode"] = steam.get("mode")
                 attrs["steam_percentage"] = steam.get("relativeOutput", {}).get("percentage")
 
         # Add timer information
-        timer_node = device.nodes.get("timer", {})
+        timer_node = device.state_nodes.get("timer", {})
         if timer_node:
             attrs["timer_mode"] = timer_node.get("mode")
             attrs["timer_initial"] = timer_node.get("initial")
@@ -186,7 +186,7 @@ class AnovaOvenClimate(AnovaOvenEntity, ClimateEntity):
         duration = None
         device = self.coordinator.get_device(self._device_id)
         if device:
-            timer_node = device.nodes.get("timer", {})
+            timer_node = device.state_nodes.get("timer", {})
             if timer_node and timer_node.get("mode") != "idle":
                 duration = timer_node.get("initial")
 

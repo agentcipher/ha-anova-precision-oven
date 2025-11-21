@@ -64,7 +64,7 @@ BINARY_SENSORS: tuple[AnovaOvenBinarySensorEntityDescription, ...] = (
         name="Door",
         device_class=BinarySensorDeviceClass.DOOR,
         is_on_fn=lambda device: (
-            device.nodes.get("door", {}).get("open", False)
+            device.state_nodes.get("door", {}).get("open", False)
         ),
     ),
     AnovaOvenBinarySensorEntityDescription(
@@ -72,7 +72,7 @@ BINARY_SENSORS: tuple[AnovaOvenBinarySensorEntityDescription, ...] = (
         name="Water Low",
         device_class=BinarySensorDeviceClass.PROBLEM,
         is_on_fn=lambda device: (
-            device.nodes.get("waterTank", {}).get("low", False)
+            device.state_nodes.get("waterTank", {}).get("low", False)
         ),
     ),
     AnovaOvenBinarySensorEntityDescription(
@@ -80,7 +80,7 @@ BINARY_SENSORS: tuple[AnovaOvenBinarySensorEntityDescription, ...] = (
         name="Probe Connected",
         device_class=BinarySensorDeviceClass.CONNECTIVITY,
         is_on_fn=lambda device: (
-            device.nodes.get("probe", {}).get("connected", False)
+            device.state_nodes.get("probe", {}).get("connected", False)
         ),
     ),
     AnovaOvenBinarySensorEntityDescription(
@@ -88,7 +88,7 @@ BINARY_SENSORS: tuple[AnovaOvenBinarySensorEntityDescription, ...] = (
         name="Vent",
         device_class=BinarySensorDeviceClass.OPENING,
         is_on_fn=lambda device: (
-            device.nodes.get("exhaustVent", {}).get("state") == "open"
+            device.state_nodes.get("exhaustVent", {}).get("state") == "open"
         ),
     ),
 )
