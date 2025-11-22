@@ -8,7 +8,7 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
-from anova_oven_sdk.models import Device
+from .models import AnovaOvenDevice
 
 from .const import DOMAIN
 from .coordinator import AnovaOvenCoordinator

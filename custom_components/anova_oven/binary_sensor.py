@@ -13,7 +13,9 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
-from anova_oven_sdk.models import Device, DeviceState
+from anova_oven_sdk.models import DeviceState
+
+from .models import AnovaOvenDevice
 
 from .coordinator import AnovaOvenCoordinator
 from .entity import AnovaOvenEntity
@@ -23,7 +25,7 @@ from .entity import AnovaOvenEntity
 class AnovaOvenBinarySensorEntityDescription(BinarySensorEntityDescription):
     """Describes Anova Oven binary sensor entity."""
 
-    is_on_fn: Callable[[Device], bool] | None = None
+    is_on_fn: Callable[[AnovaOvenDevice], bool] | None = None
 
 
 BINARY_SENSORS: tuple[AnovaOvenBinarySensorEntityDescription, ...] = (
@@ -38,18 +40,6 @@ BINARY_SENSORS: tuple[AnovaOvenBinarySensorEntityDescription, ...] = (
         name="Preheating",
         device_class=BinarySensorDeviceClass.HEAT,
         is_on_fn=lambda device: device.state == DeviceState.PREHEATING,
-    ),
-    AnovaOvenBinarySensorEntityDescription(
-        key="door_open",
-        name="Door",
-        device_class=BinarySensorDeviceClass.DOOR,
-        is_on_fn=lambda device: device.nodes.door.open,
-    ),
-    AnovaOvenBinarySensorEntityDescription(
-        key="water_low",
-        name="Water Low",
-        device_class=BinarySensorDeviceClass.PROBLEM,
-        is_on_fn=lambda device: device.nodes.water_tank.low,
     ),
     AnovaOvenBinarySensorEntityDescription(
         key="probe_connected",

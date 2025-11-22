@@ -12,7 +12,9 @@ from homeassistant.const import ATTR_TEMPERATURE, UnitOfTemperature
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
-from anova_oven_sdk.models import Device, DeviceState
+from anova_oven_sdk.models import DeviceState
+
+from .models import AnovaOvenDevice
 
 from .const import (
     ATTR_CURRENT_STAGE,

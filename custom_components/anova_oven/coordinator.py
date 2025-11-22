@@ -13,10 +13,11 @@ from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, Upda
 
 from anova_oven_sdk import AnovaOven
 from anova_oven_sdk.settings import settings
-from anova_oven_sdk.models import Device, RecipeLibrary
+from anova_oven_sdk.models import RecipeLibrary
 from anova_oven_sdk.exceptions import AnovaError
 
 from .const import DOMAIN, CONF_RECIPES_PATH, RECIPES_FILE
+from .models import AnovaOvenDevice
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -39,14 +40,25 @@ class HAAnovaOven(AnovaOven):
                 try:
                     # Attempt to update the device with the new state
                     # We assume payload is compatible with Device model
-                    device = Device.model_validate(payload)
+                    device = AnovaOvenDevice.model_validate(payload)
                     self._devices[device.cooker_id] = device
                     self._update_callback()
                 except Exception as e:
                     _LOGGER.debug("Failed to process state update: %s", e)
 
+    def _handle_device_list(self, data: dict[str, Any]) -> None:
+        """Handle device discovery messages."""
+        if data.get('command') == 'EVENT_APO_WIFI_LIST':
+            payload = data.get('payload', [])
+            for device_data in payload:
+                try:
+                    device = AnovaOvenDevice.model_validate(device_data)
+                    self._devices[device.cooker_id] = device
+                except Exception as e:
+                    _LOGGER.error("Device validation error: %s", e)
 
-class AnovaOvenCoordinator(DataUpdateCoordinator[dict[str, Device]]):
+
+class AnovaOvenCoordinator(DataUpdateCoordinator[dict[str, AnovaOvenDevice]]):
     """Class to manage fetching Anova Oven data."""
 
     def __init__(self, hass: HomeAssistant, entry: ConfigEntry) -> None:
@@ -81,7 +93,7 @@ class AnovaOvenCoordinator(DataUpdateCoordinator[dict[str, Device]]):
         """Trigger update from callback."""
         self.async_set_updated_data(self.anova_oven._devices)
 
-    async def _async_update_data(self) -> dict[str, Device]:
+    async def _async_update_data(self) -> dict[str, AnovaOvenDevice]:
         """Fetch data from API endpoint."""
         try:
             if not self.anova_oven.client.is_connected:
@@ -119,7 +131,7 @@ class AnovaOvenCoordinator(DataUpdateCoordinator[dict[str, Device]]):
             _LOGGER.warning("Failed to load recipes: %s", err)
             self.recipe_library = RecipeLibrary(recipes={})
 
-    def get_device(self, device_id: str) -> Device | None:
+    def get_device(self, device_id: str) -> AnovaOvenDevice | None:
         """Get device by ID."""
         return self.data.get(device_id)
 

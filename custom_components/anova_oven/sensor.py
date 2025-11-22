@@ -21,7 +21,9 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.typing import StateType
 
-from anova_oven_sdk.models import Device, DeviceState
+from anova_oven_sdk.models import DeviceState
+
+from .models import AnovaOvenDevice
 
 from .const import DOMAIN
 from .coordinator import AnovaOvenCoordinator
@@ -32,8 +34,8 @@ from .entity import AnovaOvenEntity
 class AnovaOvenSensorEntityDescription(SensorEntityDescription):
     """Describes Anova Oven sensor entity."""
 
-    value_fn: Callable[[Device], StateType] | None = None
-    available_fn: Callable[[Device], bool] | None = None
+    value_fn: Callable[[AnovaOvenDevice], StateType] | None = None
+    available_fn: Callable[[AnovaOvenDevice], bool] | None = None
 
 
 SENSORS: tuple[AnovaOvenSensorEntityDescription, ...] = (
