@@ -15,7 +15,7 @@ class TemperatureState(BaseModel):
     """Temperature state."""
     model_config = ConfigDict(frozen=False)
     current: Temperature
-    setpoint: Optional[Temperature] = None  # Optional - wet bulb doesn't have setpoint
+    setpoint: Temperature
 
 class TemperatureBulbs(BaseModel):
     """Temperature bulbs configuration."""
@@ -24,17 +24,12 @@ class TemperatureBulbs(BaseModel):
     dry: TemperatureState
     wet: TemperatureState
 
-class TemperatureProbeNode(BaseModel):
-    """Temperature probe node - API uses 'temperatureProbe' not 'probe'."""
+class ProbeNode(BaseModel):
+    """Probe node."""
     model_config = ConfigDict(frozen=False)
     connected: bool
-    current: Optional[Temperature] = None
-    setpoint: Optional[Temperature] = None
-
-class RelativeHumidity(BaseModel):
-    """Relative humidity."""
-    model_config = ConfigDict(frozen=False)
-    current: int
+    current: Temperature
+    setpoint: Temperature
 
 class SteamOutput(BaseModel):
     """Steam output."""
@@ -42,11 +37,10 @@ class SteamOutput(BaseModel):
     percentage: int
 
 class SteamGenerators(BaseModel):
-    """Steam generators - API structure."""
-    model_config = ConfigDict(frozen=False, extra='ignore')
+    """Steam generators."""
+    model_config = ConfigDict(frozen=False)
     mode: str
-    relative_humidity: Optional[RelativeHumidity] = Field(None, alias="relativeHumidity")
-    # Note: API doesn't have 'relativeOutput', it has 'relativeHumidity'
+    relative_output: SteamOutput = Field(..., alias="relativeOutput")
 
 class TimerNode(BaseModel):
     """Timer node."""
@@ -61,30 +55,24 @@ class TimerNode(BaseModel):
 
 class FanNode(BaseModel):
     """Fan node."""
-    model_config = ConfigDict(frozen=False, extra='ignore')
+    model_config = ConfigDict(frozen=False)
     speed: int
 
-class VentNode(BaseModel):
-    """Vent node - API uses 'vent' not 'exhaustVent'."""
+class ExhaustVentNode(BaseModel):
+    """Exhaust vent node."""
     model_config = ConfigDict(frozen=False)
-    open: bool = Field(..., alias="open")
+    state: str
 
 class Nodes(BaseModel):
-    """Device nodes - matching actual API structure."""
-    model_config = ConfigDict(frozen=False, extra='ignore')
+    """Device nodes."""
+    model_config = ConfigDict(frozen=False)
 
     temperature_bulbs: TemperatureBulbs = Field(..., alias="temperatureBulbs")
-    temperature_probe: Optional[TemperatureProbeNode] = Field(None, alias="temperatureProbe")  # API name
+    probe: ProbeNode
     steam_generators: SteamGenerators = Field(..., alias="steamGenerators")
     timer: TimerNode
     fan: FanNode
-    vent: Optional[VentNode] = None  # API uses 'vent' not 'exhaustVent'
-
-class State(BaseModel):
-    """Device state - contains temperatureUnit."""
-    model_config = ConfigDict(frozen=False, extra='ignore')
-    mode: str
-    temperature_unit: Optional[str] = Field(None, alias="temperatureUnit")  # THIS IS WHERE IT IS!
+    exhaust_vent: ExhaustVentNode = Field(..., alias="exhaustVent")
 
 class CookStatus(BaseModel):
     """Cook status."""
@@ -94,9 +82,8 @@ class CookStatus(BaseModel):
     current_stage: Optional[int] = Field(None, alias="currentStage")
 
 class AnovaOvenDevice(SDKDevice):
-    """Extended Device model with nodes and state."""
+    """Extended Device model with nodes."""
     nodes: Optional[Nodes] = None
-    state: Optional[State] = None  # Add state to capture temperatureUnit
     cook: Optional[CookStatus] = None
 
 AnovaOvenDevice.model_rebuild()
