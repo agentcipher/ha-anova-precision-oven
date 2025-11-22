@@ -19,6 +19,7 @@ from .models import AnovaOvenDevice
 
 from .coordinator import AnovaOvenCoordinator
 from .entity import AnovaOvenEntity
+from .const import DOMAIN
 
 
 @dataclass(frozen=True)
