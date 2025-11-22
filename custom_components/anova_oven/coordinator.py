@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import logging
+import json
 from datetime import timedelta
 from typing import Any
 
@@ -42,17 +43,67 @@ class HAAnovaOven(AnovaOven):
                     # The payload 'state' contains the nodes data
                     state_data = payload.get('state')
                     if state_data:
+                        # ENHANCED LOGGING: Log the full state data structure
+                        _LOGGER.debug("=" * 80)
+                        _LOGGER.debug("RECEIVED STATE UPDATE for device %s", device_id)
+                        _LOGGER.debug("Full state_data keys: %s", list(state_data.keys()))
+
+                        # Pretty print the full state data
+                        try:
+                            formatted_data = json.dumps(state_data, indent=2, default=str)
+                            _LOGGER.debug("Full state_data content:\n%s", formatted_data)
+                        except Exception as json_err:
+                            _LOGGER.debug("Could not format state_data as JSON: %s", json_err)
+                            _LOGGER.debug("Raw state_data: %s", state_data)
+
+                        _LOGGER.debug("=" * 80)
+
+                        # Now attempt validation
                         if "nodes" in state_data:
-                            device.nodes = Nodes.model_validate(state_data["nodes"])
-                            self._update_callback()
+                            _LOGGER.debug("Attempting to validate state_data['nodes']...")
+                            try:
+                                device.nodes = Nodes.model_validate(state_data["nodes"])
+                                _LOGGER.debug("✓ Validation successful for nested nodes structure")
+                                self._update_callback()
+                            except Exception as validation_err:
+                                _LOGGER.error("✗ Validation FAILED for nested nodes structure")
+                                _LOGGER.error("Validation error: %s", validation_err)
+                                _LOGGER.debug("Failed data structure: %s", json.dumps(state_data["nodes"], indent=2, default=str))
                         elif "temperatureBulbs" in state_data:
                             # Fallback for flat structure
-                            device.nodes = Nodes.model_validate(state_data)
-                            self._update_callback()
+                            _LOGGER.debug("Attempting to validate flat state_data structure...")
+                            try:
+                                device.nodes = Nodes.model_validate(state_data)
+                                _LOGGER.debug("✓ Validation successful for flat structure")
+                                self._update_callback()
+                            except Exception as validation_err:
+                                _LOGGER.error("✗ Validation FAILED for flat structure")
+                                _LOGGER.error("Validation error: %s", validation_err)
+
+                                # Log detailed field analysis
+                                _LOGGER.debug("Field-by-field analysis:")
+                                _LOGGER.debug("  - temperatureBulbs: %s", "✓ Present" if "temperatureBulbs" in state_data else "✗ Missing")
+                                _LOGGER.debug("  - probe: %s", "✓ Present" if "probe" in state_data else "✗ Missing")
+                                _LOGGER.debug("  - steamGenerators: %s", "✓ Present" if "steamGenerators" in state_data else "✗ Missing")
+                                _LOGGER.debug("  - timer: %s", "✓ Present" if "timer" in state_data else "✗ Missing")
+                                _LOGGER.debug("  - fan: %s", "✓ Present" if "fan" in state_data else "✗ Missing")
+                                _LOGGER.debug("  - exhaustVent: %s", "✓ Present" if "exhaustVent" in state_data else "✗ Missing")
+
+                                # Check nested fields
+                                if "temperatureBulbs" in state_data:
+                                    tb = state_data["temperatureBulbs"]
+                                    _LOGGER.debug("  - temperatureBulbs.wet: %s", json.dumps(tb.get("wet"), default=str))
+                                    if "wet" in tb:
+                                        _LOGGER.debug("    - wet.setpoint: %s", "✓ Present" if "setpoint" in tb["wet"] else "✗ Missing")
+
+                                if "steamGenerators" in state_data:
+                                    sg = state_data["steamGenerators"]
+                                    _LOGGER.debug("  - steamGenerators content: %s", json.dumps(sg, default=str))
+                                    _LOGGER.debug("    - relativeOutput: %s", "✓ Present" if "relativeOutput" in sg else "✗ Missing")
                         else:
-                            _LOGGER.debug("Received state update without nodes data: %s", state_data.keys())
+                            _LOGGER.debug("Received state update with empty or missing nodes data: %s", state_data.keys())
                 except Exception as e:
-                    _LOGGER.debug("Failed to process state update: %s", e)
+                    _LOGGER.error("Failed to process state update: %s", e, exc_info=True)
 
     def _handle_device_list(self, data: dict[str, Any]) -> None:
         """Handle device discovery messages."""
