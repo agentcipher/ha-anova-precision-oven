@@ -41,11 +41,16 @@ class HAAnovaOven(AnovaOven):
                     device = self._devices[device_id]
                     # The payload 'state' contains the nodes data
                     state_data = payload.get('state')
-                    if state_data and "temperatureBulbs" in state_data:
-                        device.nodes = Nodes.model_validate(state_data)
-                        self._update_callback()
-                    elif state_data:
-                        _LOGGER.debug("Received state update without nodes data: %s", state_data.keys())
+                    if state_data:
+                        if "nodes" in state_data:
+                            device.nodes = Nodes.model_validate(state_data["nodes"])
+                            self._update_callback()
+                        elif "temperatureBulbs" in state_data:
+                            # Fallback for flat structure
+                            device.nodes = Nodes.model_validate(state_data)
+                            self._update_callback()
+                        else:
+                            _LOGGER.debug("Received state update without nodes data: %s", state_data.keys())
                 except Exception as e:
                     _LOGGER.debug("Failed to process state update: %s", e)
 
