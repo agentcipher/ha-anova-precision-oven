@@ -13,41 +13,41 @@ from anova_oven_sdk.models import (
 
 class TemperatureState(BaseModel):
     """Temperature state."""
-    model_config = ConfigDict(frozen=False, extra='ignore')
+    model_config = ConfigDict(frozen=False)
     current: Temperature
-    setpoint: Optional[Temperature] = None  # Make optional - not always present
+    setpoint: Optional[Temperature] = None  # ONLY CHANGE: Make optional since API doesn't always send it
 
 class TemperatureBulbs(BaseModel):
     """Temperature bulbs configuration."""
-    model_config = ConfigDict(frozen=False, extra='ignore')
-    mode: Optional[str] = Field(None, description="Mode: dry or wet")
-    dry: Optional[TemperatureState] = None
-    wet: Optional[TemperatureState] = None
+    model_config = ConfigDict(frozen=False)
+    mode: str = Field(..., description="Mode: dry or wet")
+    dry: TemperatureState
+    wet: TemperatureState
 
 class ProbeNode(BaseModel):
     """Probe node."""
-    model_config = ConfigDict(frozen=False, extra='ignore')
-    connected: bool = False
-    current: Optional[Temperature] = None
-    setpoint: Optional[Temperature] = None
+    model_config = ConfigDict(frozen=False)
+    connected: bool
+    current: Temperature
+    setpoint: Temperature
 
 class SteamOutput(BaseModel):
     """Steam output."""
-    model_config = ConfigDict(frozen=False, extra='ignore')
-    percentage: int = 0
+    model_config = ConfigDict(frozen=False)
+    percentage: int
 
 class SteamGenerators(BaseModel):
     """Steam generators."""
-    model_config = ConfigDict(frozen=False, extra='ignore')
-    mode: str = "idle"
-    relative_output: Optional[SteamOutput] = Field(None, alias="relativeOutput")
+    model_config = ConfigDict(frozen=False)
+    mode: str
+    relative_output: Optional[SteamOutput] = Field(None, alias="relativeOutput")  # ONLY CHANGE: Make optional
 
 class TimerNode(BaseModel):
     """Timer node."""
-    model_config = ConfigDict(frozen=False, extra='ignore')
-    mode: str = "stopped"
-    initial: int = 0
-    current: int = 0
+    model_config = ConfigDict(frozen=False)
+    mode: str
+    initial: int
+    current: int
 
     @property
     def is_running(self) -> bool:
@@ -55,35 +55,34 @@ class TimerNode(BaseModel):
 
 class FanNode(BaseModel):
     """Fan node."""
-    model_config = ConfigDict(frozen=False, extra='ignore')
-    speed: int = 0
+    model_config = ConfigDict(frozen=False)
+    speed: int
 
 class ExhaustVentNode(BaseModel):
     """Exhaust vent node."""
-    model_config = ConfigDict(frozen=False, extra='ignore')
-    state: str = "closed"
+    model_config = ConfigDict(frozen=False)
+    state: str
 
 class Nodes(BaseModel):
     """Device nodes."""
-    model_config = ConfigDict(frozen=False, extra='ignore')
+    model_config = ConfigDict(frozen=False)
 
-    temperature_bulbs: Optional[TemperatureBulbs] = Field(None, alias="temperatureBulbs")
-    probe: Optional[ProbeNode] = None
-    steam_generators: Optional[SteamGenerators] = Field(None, alias="steamGenerators")
-    timer: Optional[TimerNode] = None
-    fan: Optional[FanNode] = None
-    exhaust_vent: Optional[ExhaustVentNode] = Field(None, alias="exhaustVent")
+    temperature_bulbs: TemperatureBulbs = Field(..., alias="temperatureBulbs")
+    probe: Optional[ProbeNode] = None  # ONLY CHANGE: Make optional since API doesn't always send it
+    steam_generators: SteamGenerators = Field(..., alias="steamGenerators")
+    timer: TimerNode
+    fan: FanNode
+    exhaust_vent: Optional[ExhaustVentNode] = Field(None, alias="exhaustVent")  # ONLY CHANGE: Make optional
 
 class CookStatus(BaseModel):
     """Cook status."""
-    model_config = ConfigDict(frozen=False, extra='ignore')
+    model_config = ConfigDict(frozen=False)
     name: Optional[str] = None
     stages: Optional[list] = None
     current_stage: Optional[int] = Field(None, alias="currentStage")
 
 class AnovaOvenDevice(SDKDevice):
     """Extended Device model with nodes."""
-    model_config = ConfigDict(extra='ignore')
     nodes: Optional[Nodes] = None
     cook: Optional[CookStatus] = None
 

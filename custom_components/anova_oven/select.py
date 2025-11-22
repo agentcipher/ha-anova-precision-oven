@@ -1,7 +1,6 @@
 """Select platform for Anova Precision Oven."""
 from __future__ import annotations
 
-import logging
 from typing import Any
 
 from homeassistant.components.select import SelectEntity
@@ -14,8 +13,6 @@ from .models import AnovaOvenDevice
 from .const import DOMAIN
 from .coordinator import AnovaOvenCoordinator
 from .entity import AnovaOvenEntity
-
-_LOGGER = logging.getLogger(__name__)
 
 
 async def async_setup_entry(
@@ -112,45 +109,18 @@ class AnovaOvenTemperatureUnitSelect(AnovaOvenEntity, SelectEntity):
         """Return the current temperature unit."""
         device = self.coordinator.get_device(self._device_id)
         if not device:
-            _LOGGER.debug("Device %s not found in coordinator data", self._device_id)
             return "C"
 
-        # Try multiple paths to get temperature unit
-        try:
-            # Check if device.nodes exists and has temperature_unit
-            if hasattr(device, 'nodes') and device.nodes:
-                if hasattr(device.nodes, 'temperature_unit'):
-                    unit = device.nodes.temperature_unit
-                    _LOGGER.debug("Temperature unit from nodes: %s", unit)
-                    return unit or "C"
-
-            # Check if device.state exists and has temperature_unit
-            if hasattr(device, 'state') and device.state:
-                if hasattr(device.state, 'temperature_unit'):
-                    unit = device.state.temperature_unit
-                    _LOGGER.debug("Temperature unit from state: %s", unit)
-                    return unit or "C"
-
-            # Check if device directly has temperature_unit
-            if hasattr(device, 'temperature_unit'):
-                unit = device.temperature_unit
-                _LOGGER.debug("Temperature unit from device: %s", unit)
-                return unit or "C"
-
-            _LOGGER.debug("Temperature unit not found in device structure, defaulting to C")
-            _LOGGER.debug("Device attributes: %s", dir(device))
-
-        except Exception as e:
-            _LOGGER.error("Error getting temperature unit: %s", e)
+        # Try to get temperature unit from detailed state
+        # Assuming Device has temperature_unit or it's in state
+        # Based on previous files, it might be device.state.temperature_unit
+        # But let's check if Device has it.
+        # If not, default to C.
+        if hasattr(device.state, 'temperature_unit'):
+             return device.state.temperature_unit or "C"
 
         return "C"
 
     async def async_select_option(self, option: str) -> None:
         """Select temperature unit."""
-        _LOGGER.info("User requested temperature unit change to: %s for device %s", option, self._device_id)
-        try:
-            await self.coordinator.async_set_temperature_unit(self._device_id, option)
-            _LOGGER.info("Temperature unit change completed successfully")
-        except Exception as e:
-            _LOGGER.error("Failed to change temperature unit: %s", e, exc_info=True)
-            raise
+        await self.coordinator.async_set_temperature_unit(self._device_id, option)

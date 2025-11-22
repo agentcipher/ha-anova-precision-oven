@@ -42,24 +42,15 @@ class HAAnovaOven(AnovaOven):
                     # The payload 'state' contains the nodes data
                     state_data = payload.get('state')
                     if state_data:
-                        # Try to update nodes, but handle validation errors gracefully
-                        try:
-                            # Check if nodes data exists and has content
-                            if "nodes" in state_data and state_data["nodes"]:
-                                device.nodes = Nodes.model_validate(state_data["nodes"])
-                                self._update_callback()
-                            elif "temperatureBulbs" in state_data:
-                                # Fallback for flat structure - validate with extra='ignore' to skip unknown fields
-                                device.nodes = Nodes.model_validate(state_data, strict=False)
-                                self._update_callback()
-                            else:
-                                _LOGGER.debug("Received state update with empty or missing nodes data: %s", state_data.keys())
-                        except Exception as validation_error:
-                            # Log validation errors but don't crash - just store raw state
-                            _LOGGER.debug("Node validation failed, storing raw state data: %s", validation_error)
-                            # Store the raw state data on the device for fallback
-                            if hasattr(device, '_raw_state'):
-                                device._raw_state = state_data
+                        if "nodes" in state_data:
+                            device.nodes = Nodes.model_validate(state_data["nodes"])
+                            self._update_callback()
+                        elif "temperatureBulbs" in state_data:
+                            # Fallback for flat structure
+                            device.nodes = Nodes.model_validate(state_data)
+                            self._update_callback()
+                        else:
+                            _LOGGER.debug("Received state update without nodes data: %s", state_data.keys())
                 except Exception as e:
                     _LOGGER.debug("Failed to process state update: %s", e)
 
@@ -113,37 +104,11 @@ class AnovaOvenCoordinator(DataUpdateCoordinator[dict[str, AnovaOvenDevice]]):
     async def _async_update_data(self) -> dict[str, AnovaOvenDevice]:
         """Fetch data from API endpoint."""
         try:
-            # Check if connected, if not connect
             if not self.anova_oven.client.is_connected:
-                # FIX: The connect() method is async and needs to be awaited properly
-                # Wrap in executor to avoid blocking SSL operations
-                try:
-                    # First check if connect is a coroutine
-                    connect_result = self.anova_oven.client.connect()
-                    if hasattr(connect_result, '__await__'):
-                        # It's a coroutine, await it directly
-                        await connect_result
-                    else:
-                        # It's a regular function, run in executor
-                        await self.hass.async_add_executor_job(connect_result)
-                except Exception as connect_err:
-                    _LOGGER.error("Failed to connect: %s", connect_err)
-                    raise
+                await self.anova_oven.connect()
 
-            # FIX: Wrap discover_devices in executor to avoid blocking SSL calls
             # Discovery updates the devices list
-            try:
-                discover_result = self.anova_oven.discover_devices()
-                if hasattr(discover_result, '__await__'):
-                    # It's a coroutine
-                    await discover_result
-                else:
-                    # Run in executor
-                    await self.hass.async_add_executor_job(discover_result)
-            except Exception as discover_err:
-                _LOGGER.error("Failed to discover devices: %s", discover_err)
-                # Don't raise here - we might already have devices from callbacks
-                pass
+            await self.anova_oven.discover_devices()
 
             # Load recipes if not loaded
             if not self.recipe_library:
@@ -201,19 +166,10 @@ class AnovaOvenCoordinator(DataUpdateCoordinator[dict[str, AnovaOvenDevice]]):
 
     async def async_set_temperature_unit(self, device_id: str, unit: str) -> None:
         """Set temperature unit."""
-        _LOGGER.debug("Setting temperature unit to %s for device %s", unit, device_id)
-        try:
-            await self.anova_oven.set_temperature_unit(device_id, unit)
-            _LOGGER.debug("Temperature unit set successfully")
-            await self.async_request_refresh()
-        except Exception as err:
-            _LOGGER.error("Failed to set temperature unit: %s", err)
-            raise
+        await self.anova_oven.set_temperature_unit(device_id, unit)
+        await self.async_request_refresh()
 
     async def async_shutdown(self) -> None:
         """Shutdown the coordinator."""
-        try:
-            await self.anova_oven.disconnect()
-        except Exception as err:
-            _LOGGER.error("Error during shutdown: %s", err)
+        await self.anova_oven.disconnect()
         await super().async_shutdown()
