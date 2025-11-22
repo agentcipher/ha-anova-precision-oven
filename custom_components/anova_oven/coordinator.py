@@ -34,23 +34,33 @@ class HAAnovaOven(AnovaOven):
     def _handle_state_update(self, data: dict[str, Any]) -> None:
         """Handle real-time state updates from WebSocket.
 
-        Expected payload structure:
+        The API can send two different payload formats:
+
+        Format 1 (Full update):
         {
             "command": "EVENT_APO_STATE",
             "payload": {
-                "id": "device_id",  # or "cookerId"
+                "id": "device_id",
                 "version": 1,
                 "updatedTimestamp": "...",
                 "systemInfo": {...},
+                "state": {...},
+                "nodes": {...}
+            }
+        }
+
+        Format 2 (Nested under 'state'):
+        {
+            "command": "EVENT_APO_STATE",
+            "payload": {
+                "cookerId": "device_id",
+                "type": "...",
                 "state": {
-                    "mode": "idle",
-                    "temperatureUnit": "F",
-                    "processedCommandIds": [...]
-                },
-                "nodes": {
-                    "temperatureBulbs": {...},
-                    "timer": {...},
-                    ...
+                    "version": 1,
+                    "updatedTimestamp": "...",
+                    "systemInfo": {...},
+                    "state": {...},
+                    "nodes": {...}
                 }
             }
         }
@@ -59,6 +69,8 @@ class HAAnovaOven(AnovaOven):
             return
 
         payload = data.get('payload', {})
+
+        # Determine device ID - can be 'id' or 'cookerId'
         device_id = payload.get('id') or payload.get('cookerId')
 
         if not device_id:
@@ -73,6 +85,18 @@ class HAAnovaOven(AnovaOven):
             device = self._devices[device_id]
             updated = False
 
+            # Check if this is Format 2 (nested under 'state' key)
+            # Format 2 has: cookerId, type, state (where state contains the full data)
+            if 'state' in payload and isinstance(payload['state'], dict):
+                # Check if 'state' contains nested structure (Format 2)
+                nested_state = payload['state']
+                if 'nodes' in nested_state or 'systemInfo' in nested_state:
+                    _LOGGER.debug("Detected Format 2 payload (nested under 'state' key)")
+                    # Use nested_state as the actual payload
+                    payload = nested_state
+
+            # Now process the payload (works for both formats)
+
             # Update nodes if present
             if "nodes" in payload:
                 try:
@@ -83,16 +107,19 @@ class HAAnovaOven(AnovaOven):
                     _LOGGER.warning("Failed to validate nodes data: %s", e)
                     _LOGGER.debug("Nodes data: %s", payload["nodes"])
 
-            # Update state if present
-            if "state" in payload:
-                try:
-                    device.state = State.model_validate(payload["state"])
-                    updated = True
-                    _LOGGER.debug("Updated state for device %s: mode=%s, unit=%s",
-                                device_id, device.state.mode, device.state.temperature_unit)
-                except Exception as e:
-                    _LOGGER.warning("Failed to validate state data: %s", e)
-                    _LOGGER.debug("State data: %s", payload["state"])
+            # Update state if present (the inner 'state' object with mode/temperatureUnit)
+            if "state" in payload and isinstance(payload["state"], dict):
+                state_data = payload["state"]
+                # Make sure this is the actual state object (has 'mode' field)
+                if "mode" in state_data:
+                    try:
+                        device.state = State.model_validate(state_data)
+                        updated = True
+                        _LOGGER.debug("Updated state for device %s: mode=%s, unit=%s",
+                                    device_id, device.state.mode, device.state.temperature_unit)
+                    except Exception as e:
+                        _LOGGER.warning("Failed to validate state data: %s", e)
+                        _LOGGER.debug("State data: %s", state_data)
 
             # Update system info if present
             if "systemInfo" in payload:
