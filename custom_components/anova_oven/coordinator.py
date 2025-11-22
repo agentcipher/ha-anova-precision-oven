@@ -104,7 +104,11 @@ class HAAnovaOven(AnovaOven):
 
 
 class AnovaOvenCoordinator(DataUpdateCoordinator[dict[str, AnovaOvenDevice]]):
-    """Class to manage fetching Anova Oven data."""
+    """Class to manage fetching Anova Oven data.
+
+    Primarily uses WebSocket for real-time updates.
+    Polls infrequently (5 minutes) only to verify connection health.
+    """
 
     def __init__(self, hass: HomeAssistant, entry: ConfigEntry) -> None:
         """Initialize global Anova Oven data updater."""
@@ -112,9 +116,12 @@ class AnovaOvenCoordinator(DataUpdateCoordinator[dict[str, AnovaOvenDevice]]):
             hass,
             _LOGGER,
             name=DOMAIN,
-            update_interval=timedelta(seconds=30),
+            # Very infrequent polling - only for connection health checks
+            # WebSocket provides real-time updates
+            update_interval=timedelta(minutes=5),
         )
         self.entry = entry
+        self._initial_setup_done = False
 
         # Try to find the token in various keys
         self.api_token = entry.data.get(CONF_API_TOKEN)
@@ -139,17 +146,38 @@ class AnovaOvenCoordinator(DataUpdateCoordinator[dict[str, AnovaOvenDevice]]):
         self.async_set_updated_data(self.anova_oven._devices)
 
     async def _async_update_data(self) -> dict[str, AnovaOvenDevice]:
-        """Fetch data from API endpoint."""
+        """Connection health check and initial setup.
+
+        Initial run: Connect, discover devices, load recipes
+        Subsequent runs: Just verify WebSocket is still connected
+        """
         try:
-            if not self.anova_oven.client.is_connected:
-                await self.anova_oven.connect()
+            # Initial setup on first run
+            if not self._initial_setup_done:
+                _LOGGER.info("Performing initial setup (connect, discover, load recipes)")
 
-            # Discovery updates the devices list
-            await self.anova_oven.discover_devices()
+                # Connect WebSocket
+                if not self.anova_oven.client.is_connected:
+                    await self.anova_oven.connect()
 
-            # Load recipes if not loaded
-            if not self.recipe_library:
-                await self._load_recipes()
+                # Initial device discovery
+                await self.anova_oven.discover_devices()
+
+                # Load recipes
+                if not self.recipe_library:
+                    await self._load_recipes()
+
+                self._initial_setup_done = True
+                _LOGGER.info("Initial setup complete - WebSocket active for real-time updates")
+            else:
+                # Just verify connection health
+                if not self.anova_oven.client.is_connected:
+                    _LOGGER.warning("WebSocket disconnected, reconnecting...")
+                    await self.anova_oven.connect()
+                    # Rediscover devices after reconnection
+                    await self.anova_oven.discover_devices()
+                else:
+                    _LOGGER.debug("WebSocket connection healthy")
 
             return self.anova_oven._devices
         except Exception as err:
