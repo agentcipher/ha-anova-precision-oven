@@ -17,7 +17,7 @@ from anova_oven_sdk.models import RecipeLibrary
 from anova_oven_sdk.exceptions import AnovaError
 
 from .const import DOMAIN, CONF_RECIPES_PATH, RECIPES_FILE
-from .models import AnovaOvenDevice, Nodes, State, SystemInfo
+from .models import AnovaOvenDevice, WebSocketPayload
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -32,122 +32,63 @@ class HAAnovaOven(AnovaOven):
         self.client.add_callback(self._handle_state_update)
 
     def _handle_state_update(self, data: dict[str, Any]) -> None:
-        """Handle real-time state updates from WebSocket.
-
-        The API can send two different payload formats:
-
-        Format 1 (Full update):
-        {
-            "command": "EVENT_APO_STATE",
-            "payload": {
-                "id": "device_id",
-                "version": 1,
-                "updatedTimestamp": "...",
-                "systemInfo": {...},
-                "state": {...},
-                "nodes": {...}
-            }
-        }
-
-        Format 2 (Nested under 'state'):
-        {
-            "command": "EVENT_APO_STATE",
-            "payload": {
-                "cookerId": "device_id",
-                "type": "...",
-                "state": {
-                    "version": 1,
-                    "updatedTimestamp": "...",
-                    "systemInfo": {...},
-                    "state": {...},
-                    "nodes": {...}
-                }
-            }
-        }
-        """
+        """Handle real-time state updates from WebSocket."""
         if data.get('command') != 'EVENT_APO_STATE':
             return
 
-        payload = data.get('payload', {})
-
-        # Determine device ID - can be 'id' or 'cookerId'
-        device_id = payload.get('id') or payload.get('cookerId')
-
-        if not device_id:
-            _LOGGER.warning("Received EVENT_APO_STATE without device ID: %s", payload.keys())
-            return
-
-        if device_id not in self._devices:
-            _LOGGER.debug("Received state update for unknown device: %s", device_id)
-            return
-
         try:
+            # Use the WebSocketPayload model to handle both formats
+            ws_payload = WebSocketPayload.model_validate(data.get('payload', {}))
+
+            device_id = ws_payload.device_id or ws_payload.cooker_id
+            if not device_id:
+                _LOGGER.warning("Received EVENT_APO_STATE without device ID")
+                return
+
+            if device_id not in self._devices:
+                _LOGGER.debug("Received state update for unknown device: %s", device_id)
+                return
+
             device = self._devices[device_id]
             updated = False
 
-            # Check if this is Format 2 (nested under 'state' key)
-            # Format 2 has: cookerId, type, state (where state contains the full data)
-            if 'state' in payload and isinstance(payload['state'], dict):
-                # Check if 'state' contains nested structure (Format 2)
-                nested_state = payload['state']
-                if 'nodes' in nested_state or 'systemInfo' in nested_state:
-                    _LOGGER.debug("Detected Format 2 payload (nested under 'state' key)")
-                    # Use nested_state as the actual payload
-                    payload = nested_state
-
-            # Now process the payload (works for both formats)
-
             # Update nodes if present
-            if "nodes" in payload:
-                try:
-                    device.nodes = Nodes.model_validate(payload["nodes"])
-                    updated = True
-                    _LOGGER.debug("Updated nodes for device %s", device_id)
-                except Exception as e:
-                    _LOGGER.warning("Failed to validate nodes data: %s", e)
-                    _LOGGER.debug("Nodes data: %s", payload["nodes"])
+            if ws_payload.nodes:
+                device.nodes = ws_payload.nodes
+                updated = True
+                _LOGGER.debug("Updated nodes for device %s", device_id)
 
-            # Update state if present (the inner 'state' object with mode/temperatureUnit)
-            if "state" in payload and isinstance(payload["state"], dict):
-                state_data = payload["state"]
-                # Make sure this is the actual state object (has 'mode' field)
-                if "mode" in state_data:
-                    try:
-                        device.state = State.model_validate(state_data)
-                        updated = True
-                        _LOGGER.debug("Updated state for device %s: mode=%s, unit=%s",
-                                    device_id, device.state.mode, device.state.temperature_unit)
-                    except Exception as e:
-                        _LOGGER.warning("Failed to validate state data: %s", e)
-                        _LOGGER.debug("State data: %s", state_data)
+            # Update state if present
+            if ws_payload.state and hasattr(ws_payload.state, 'mode'):
+                device.state = ws_payload.state
+                updated = True
+                _LOGGER.debug("Updated state for device %s: mode=%s, unit=%s",
+                            device_id, device.state.mode, device.state.temperature_unit)
 
             # Update system info if present
-            if "systemInfo" in payload:
-                try:
-                    device.system_info = SystemInfo.model_validate(payload["systemInfo"])
-                    updated = True
-                    _LOGGER.debug("Updated system info for device %s", device_id)
-                except Exception as e:
-                    _LOGGER.warning("Failed to validate system info: %s", e)
+            if ws_payload.system_info:
+                device.system_info = ws_payload.system_info
+                updated = True
+                _LOGGER.debug("Updated system info for device %s", device_id)
 
             # Update version and timestamp if present
-            if "version" in payload:
-                device.version = payload["version"]
+            if ws_payload.version:
+                device.version = ws_payload.version
                 updated = True
 
-            if "updatedTimestamp" in payload:
-                device.updated_timestamp = payload["updatedTimestamp"]
+            if ws_payload.updated_timestamp:
+                device.updated_timestamp = ws_payload.updated_timestamp
                 updated = True
 
             # Trigger coordinator update if we updated anything
             if updated:
                 self._update_callback()
             else:
-                _LOGGER.debug("Received state update but found nothing to update. Payload keys: %s",
-                            payload.keys())
+                _LOGGER.debug("Received state update but nothing changed")
 
         except Exception as e:
-            _LOGGER.error("Failed to process state update for device %s: %s", device_id, e, exc_info=True)
+            _LOGGER.error("Failed to process state update: %s", e, exc_info=True)
+            _LOGGER.debug("Payload: %s", data.get('payload'))
 
     def _handle_device_list(self, data: dict[str, Any]) -> None:
         """Handle device discovery messages."""

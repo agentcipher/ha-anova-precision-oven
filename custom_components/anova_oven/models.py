@@ -1,15 +1,74 @@
 """Local models for Anova Precision Oven."""
 from __future__ import annotations
 
-from typing import Optional
+from typing import Optional, Union
 
-from pydantic import BaseModel, Field, ConfigDict
+from pydantic import BaseModel, Field, ConfigDict, field_validator, field_validator
+from typing import Union
 
 from anova_oven_sdk.models import (
     Device as SDKDevice,
     Temperature,
     Timer as SDKTimer,
 )
+
+
+class WebSocketPayload(BaseModel):
+    """WebSocket EVENT_APO_STATE payload that handles both formats.
+
+    Format 1: Direct structure with id, nodes, state at top level
+    Format 2: Nested structure with cookerId and everything under 'state' key
+    """
+    model_config = ConfigDict(frozen=False, extra='ignore')
+
+    # Device ID can be either field
+    device_id: str = Field(alias="id", default=None)
+    cooker_id: str = Field(alias="cookerId", default=None)
+
+    # Top-level fields (Format 1) or nested under state (Format 2)
+    version: Optional[int] = None
+    updated_timestamp: Optional[str] = Field(None, alias="updatedTimestamp")
+    system_info: Optional['SystemInfo'] = Field(None, alias="systemInfo")
+    state: Optional[Union['State', dict]] = None  # Can be State object or wrapper dict
+    nodes: Optional['Nodes'] = None
+
+    # Format 2 specific
+    type: Optional[str] = None
+
+    @field_validator('device_id', mode='before')
+    @classmethod
+    def get_device_id(cls, v, info):
+        """Extract device ID from either id or cookerId."""
+        if v:
+            return v
+        # Try cookerId from the raw data
+        return info.data.get('cookerId') or info.data.get('id')
+
+    @field_validator('state', mode='before')
+    @classmethod
+    def unwrap_nested_state(cls, v, info):
+        """Handle Format 2 where everything is nested under 'state'."""
+        if not isinstance(v, dict):
+            return v
+
+        # Check if this is Format 2 (state contains nodes/systemInfo/version)
+        if 'nodes' in v or 'systemInfo' in v or 'version' in v:
+            # This is Format 2 - extract the actual state object
+            actual_state = v.get('state', {})
+            # Also populate the top-level fields from nested structure
+            if 'version' in v:
+                info.data['version'] = v['version']
+            if 'updatedTimestamp' in v:
+                info.data['updated_timestamp'] = v['updatedTimestamp']
+            if 'systemInfo' in v:
+                info.data['system_info'] = v['systemInfo']
+            if 'nodes' in v:
+                info.data['nodes'] = v['nodes']
+            return actual_state
+
+        # Format 1 - return as-is
+        return v
+
 
 class TemperatureState(BaseModel):
     """Temperature state."""
@@ -172,3 +231,4 @@ class AnovaOvenDevice(SDKDevice):
     updated_timestamp: Optional[str] = Field(None, alias="updatedTimestamp")
 
 AnovaOvenDevice.model_rebuild()
+WebSocketPayload.model_rebuild()
