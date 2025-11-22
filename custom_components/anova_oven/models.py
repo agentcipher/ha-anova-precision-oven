@@ -83,7 +83,7 @@ class CookStatus(BaseModel):
 
 class AnovaOvenDevice(SDKDevice):
     """Extended Device model with nodes."""
-    nodes: Nodes
+    nodes: Optional[Nodes] = None
     cook: Optional[CookStatus] = None
 
 AnovaOvenDevice.model_rebuild()
