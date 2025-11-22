@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 import logging
-import json
 from datetime import timedelta
 from typing import Any
 
@@ -18,7 +17,7 @@ from anova_oven_sdk.models import RecipeLibrary
 from anova_oven_sdk.exceptions import AnovaError
 
 from .const import DOMAIN, CONF_RECIPES_PATH, RECIPES_FILE
-from .models import AnovaOvenDevice, Nodes
+from .models import AnovaOvenDevice, Nodes, State, SystemInfo
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -33,65 +32,95 @@ class HAAnovaOven(AnovaOven):
         self.client.add_callback(self._handle_state_update)
 
     def _handle_state_update(self, data: dict[str, Any]) -> None:
-        """Handle real-time state updates."""
-        if data.get('command') == 'EVENT_APO_STATE':
-            payload = data.get('payload', {})
-            device_id = payload.get('id') or payload.get('cookerId')
-            if device_id and device_id in self._devices:
+        """Handle real-time state updates from WebSocket.
+
+        Expected payload structure:
+        {
+            "command": "EVENT_APO_STATE",
+            "payload": {
+                "id": "device_id",  # or "cookerId"
+                "version": 1,
+                "updatedTimestamp": "...",
+                "systemInfo": {...},
+                "state": {
+                    "mode": "idle",
+                    "temperatureUnit": "F",
+                    "processedCommandIds": [...]
+                },
+                "nodes": {
+                    "temperatureBulbs": {...},
+                    "timer": {...},
+                    ...
+                }
+            }
+        }
+        """
+        if data.get('command') != 'EVENT_APO_STATE':
+            return
+
+        payload = data.get('payload', {})
+        device_id = payload.get('id') or payload.get('cookerId')
+
+        if not device_id:
+            _LOGGER.warning("Received EVENT_APO_STATE without device ID: %s", payload.keys())
+            return
+
+        if device_id not in self._devices:
+            _LOGGER.debug("Received state update for unknown device: %s", device_id)
+            return
+
+        try:
+            device = self._devices[device_id]
+            updated = False
+
+            # Update nodes if present
+            if "nodes" in payload:
                 try:
-                    device = self._devices[device_id]
-
-                    # The payload contains 'state' and 'nodes' as separate keys
-                    # 'state' has mode, temperatureUnit, etc.
-                    # 'nodes' has the detailed sensor data
-
-                    # Update state if present (contains temperatureUnit)
-                    if 'state' in payload:
-                        try:
-                            from .models import State
-                            device.state = State.model_validate(payload['state'])
-                            _LOGGER.debug("Updated device state: mode=%s, temperatureUnit=%s",
-                                        device.state.mode, device.state.temperature_unit)
-                        except Exception as state_err:
-                            _LOGGER.debug("Failed to parse state: %s", state_err)
-
-                    # Update nodes if present (contains sensor data)
-                    nodes_data = payload.get('nodes')
-                    if nodes_data:
-                        # ENHANCED LOGGING: Log the full nodes data structure
-                        _LOGGER.debug("=" * 80)
-                        _LOGGER.debug("RECEIVED NODES UPDATE for device %s", device_id)
-                        _LOGGER.debug("Full nodes_data keys: %s", list(nodes_data.keys()))
-
-                        # Pretty print the full nodes data
-                        try:
-                            formatted_data = json.dumps(nodes_data, indent=2, default=str)
-                            _LOGGER.debug("Full nodes_data content:\n%s", formatted_data)
-                        except Exception as json_err:
-                            _LOGGER.debug("Could not format nodes_data as JSON: %s", json_err)
-                            _LOGGER.debug("Raw nodes_data: %s", nodes_data)
-
-                        # Attempt validation
-                        try:
-                            device.nodes = Nodes.model_validate(nodes_data)
-                            _LOGGER.debug("✓ Nodes validation successful")
-                            self._update_callback()
-                        except Exception as validation_err:
-                            _LOGGER.error("✗ Nodes validation FAILED")
-                            _LOGGER.error("Validation error: %s", validation_err)
-
-                            # Log detailed field analysis
-                            _LOGGER.debug("Field-by-field analysis:")
-                            _LOGGER.debug("  - temperatureBulbs: %s", "✓ Present" if "temperatureBulbs" in nodes_data else "✗ Missing")
-                            _LOGGER.debug("  - temperatureProbe: %s", "✓ Present" if "temperatureProbe" in nodes_data else "✗ Missing")
-                            _LOGGER.debug("  - steamGenerators: %s", "✓ Present" if "steamGenerators" in nodes_data else "✗ Missing")
-                            _LOGGER.debug("  - timer: %s", "✓ Present" if "timer" in nodes_data else "✗ Missing")
-                            _LOGGER.debug("  - fan: %s", "✓ Present" if "fan" in nodes_data else "✗ Missing")
-                            _LOGGER.debug("  - vent: %s", "✓ Present" if "vent" in nodes_data else "✗ Missing")
-
-                        _LOGGER.debug("=" * 80)
+                    device.nodes = Nodes.model_validate(payload["nodes"])
+                    updated = True
+                    _LOGGER.debug("Updated nodes for device %s", device_id)
                 except Exception as e:
-                    _LOGGER.error("Failed to process state update: %s", e, exc_info=True)
+                    _LOGGER.warning("Failed to validate nodes data: %s", e)
+                    _LOGGER.debug("Nodes data: %s", payload["nodes"])
+
+            # Update state if present
+            if "state" in payload:
+                try:
+                    device.state = State.model_validate(payload["state"])
+                    updated = True
+                    _LOGGER.debug("Updated state for device %s: mode=%s, unit=%s",
+                                device_id, device.state.mode, device.state.temperature_unit)
+                except Exception as e:
+                    _LOGGER.warning("Failed to validate state data: %s", e)
+                    _LOGGER.debug("State data: %s", payload["state"])
+
+            # Update system info if present
+            if "systemInfo" in payload:
+                try:
+                    device.system_info = SystemInfo.model_validate(payload["systemInfo"])
+                    updated = True
+                    _LOGGER.debug("Updated system info for device %s", device_id)
+                except Exception as e:
+                    _LOGGER.warning("Failed to validate system info: %s", e)
+
+            # Update version and timestamp if present
+            if "version" in payload:
+                device.version = payload["version"]
+                updated = True
+
+            if "updatedTimestamp" in payload:
+                device.updated_timestamp = payload["updatedTimestamp"]
+                updated = True
+
+            # Trigger coordinator update if we updated anything
+            if updated:
+                self._update_callback()
+            else:
+                _LOGGER.debug("Received state update but found nothing to update. Payload keys: %s",
+                            payload.keys())
+
+        except Exception as e:
+            _LOGGER.error("Failed to process state update for device %s: %s", device_id, e, exc_info=True)
 
     def _handle_device_list(self, data: dict[str, Any]) -> None:
         """Handle device discovery messages."""
@@ -101,6 +130,7 @@ class HAAnovaOven(AnovaOven):
                 try:
                     device = AnovaOvenDevice.model_validate(device_data)
                     self._devices[device.cooker_id] = device
+                    _LOGGER.debug("Discovered device: %s", device.cooker_id)
                 except Exception as e:
                     _LOGGER.error("Device validation error: %s", e)
 
