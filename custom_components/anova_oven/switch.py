@@ -54,7 +54,7 @@ class AnovaOvenSwitch(AnovaOvenEntity, SwitchEntity):
         if not device:
             return False
 
-        return device.state.state in (DeviceState.COOKING, DeviceState.PREHEATING)
+        return device.state in (DeviceState.COOKING, DeviceState.PREHEATING)
 
     async def async_turn_on(self, **kwargs) -> None:
         """Turn on cooking."""

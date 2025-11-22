@@ -31,13 +31,13 @@ BINARY_SENSORS: tuple[AnovaOvenBinarySensorEntityDescription, ...] = (
         key="cooking",
         name="Cooking",
         device_class=BinarySensorDeviceClass.RUNNING,
-        is_on_fn=lambda device: device.state.state in (DeviceState.COOKING, DeviceState.PREHEATING),
+        is_on_fn=lambda device: device.state in (DeviceState.COOKING, DeviceState.PREHEATING),
     ),
     AnovaOvenBinarySensorEntityDescription(
         key="preheating",
         name="Preheating",
         device_class=BinarySensorDeviceClass.HEAT,
-        is_on_fn=lambda device: device.state.state == DeviceState.PREHEATING,
+        is_on_fn=lambda device: device.state == DeviceState.PREHEATING,
     ),
     AnovaOvenBinarySensorEntityDescription(
         key="door_open",

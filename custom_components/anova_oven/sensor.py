@@ -119,7 +119,7 @@ SENSORS: tuple[AnovaOvenSensorEntityDescription, ...] = (
             if device.cook
             else None
         ),
-        available_fn=lambda device: device.state.state == DeviceState.COOKING,
+        available_fn=lambda device: device.state == DeviceState.COOKING,
     ),
     AnovaOvenSensorEntityDescription(
         key="total_stages",
@@ -129,7 +129,7 @@ SENSORS: tuple[AnovaOvenSensorEntityDescription, ...] = (
             if device.cook and device.cook.stages
             else None
         ),
-        available_fn=lambda device: device.state.state == DeviceState.COOKING,
+        available_fn=lambda device: device.state == DeviceState.COOKING,
     ),
     AnovaOvenSensorEntityDescription(
         key="recipe_name",
@@ -139,7 +139,7 @@ SENSORS: tuple[AnovaOvenSensorEntityDescription, ...] = (
             if device.cook
             else None
         ),
-        available_fn=lambda device: device.state.state == DeviceState.COOKING,
+        available_fn=lambda device: device.state == DeviceState.COOKING,
     ),
 )
 

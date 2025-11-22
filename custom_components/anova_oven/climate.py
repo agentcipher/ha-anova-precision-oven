@@ -68,7 +68,7 @@ class AnovaOvenClimate(AnovaOvenEntity, ClimateEntity):
         if not device:
             return HVACMode.OFF
 
-        if device.state.state in (DeviceState.COOKING, DeviceState.PREHEATING):
+        if device.state in (DeviceState.COOKING, DeviceState.PREHEATING):
             return HVACMode.HEAT
         return HVACMode.OFF
 
