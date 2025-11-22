@@ -42,7 +42,8 @@ class HAAnovaOven(AnovaOven):
                     # The payload 'state' contains the nodes data
                     state_data = payload.get('state')
                     if state_data:
-                        if "nodes" in state_data:
+                        # Check if nodes data exists and has content
+                        if "nodes" in state_data and state_data["nodes"]:
                             device.nodes = Nodes.model_validate(state_data["nodes"])
                             self._update_callback()
                         elif "temperatureBulbs" in state_data:
@@ -50,7 +51,7 @@ class HAAnovaOven(AnovaOven):
                             device.nodes = Nodes.model_validate(state_data)
                             self._update_callback()
                         else:
-                            _LOGGER.debug("Received state update without nodes data: %s", state_data.keys())
+                            _LOGGER.debug("Received state update with empty or missing nodes data: %s", state_data.keys())
                 except Exception as e:
                     _LOGGER.debug("Failed to process state update: %s", e)
 
@@ -78,23 +79,23 @@ class AnovaOvenCoordinator(DataUpdateCoordinator[dict[str, AnovaOvenDevice]]):
             update_interval=timedelta(seconds=30),
         )
         self.entry = entry
-        
+
         # Try to find the token in various keys
         self.api_token = entry.data.get(CONF_API_TOKEN)
         if not self.api_token:
             self.api_token = entry.data.get(CONF_TOKEN)
         if not self.api_token:
             self.api_token = entry.data.get("access_token")
-            
+
         if not self.api_token:
             _LOGGER.error("API token not found in config entry data: %s", entry.data.keys())
             raise ConfigEntryAuthFailed("API token missing")
 
         self.recipe_library: RecipeLibrary | None = None
-        
+
         # Configure settings
         settings.configure(TOKEN=self.api_token)
-        
+
         self.anova_oven = HAAnovaOven(self.async_set_updated_data_from_callback)
 
     def async_set_updated_data_from_callback(self):
@@ -105,15 +106,18 @@ class AnovaOvenCoordinator(DataUpdateCoordinator[dict[str, AnovaOvenDevice]]):
         """Fetch data from API endpoint."""
         try:
             if not self.anova_oven.client.is_connected:
-                await self.anova_oven.connect()
-            
+                # FIX: Wrap the blocking SSL connect call in executor
+                await self.hass.async_add_executor_job(
+                    self.anova_oven.client.connect
+                )
+
             # Discovery updates the devices list
             await self.anova_oven.discover_devices()
-            
+
             # Load recipes if not loaded
             if not self.recipe_library:
                 await self._load_recipes()
-                
+
             return self.anova_oven._devices
         except Exception as err:
             raise UpdateFailed(f"Error communicating with API: {err}") from err
@@ -166,8 +170,14 @@ class AnovaOvenCoordinator(DataUpdateCoordinator[dict[str, AnovaOvenDevice]]):
 
     async def async_set_temperature_unit(self, device_id: str, unit: str) -> None:
         """Set temperature unit."""
-        await self.anova_oven.set_temperature_unit(device_id, unit)
-        await self.async_request_refresh()
+        _LOGGER.debug("Setting temperature unit to %s for device %s", unit, device_id)
+        try:
+            await self.anova_oven.set_temperature_unit(device_id, unit)
+            _LOGGER.debug("Temperature unit set successfully")
+            await self.async_request_refresh()
+        except Exception as err:
+            _LOGGER.error("Failed to set temperature unit: %s", err)
+            raise
 
     async def async_shutdown(self) -> None:
         """Shutdown the coordinator."""
