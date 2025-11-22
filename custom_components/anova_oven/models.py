@@ -40,7 +40,7 @@ class SteamGenerators(BaseModel):
     """Steam generators."""
     model_config = ConfigDict(frozen=False)
     mode: str
-    relative_output: SteamOutput
+    relative_output: SteamOutput = Field(..., alias="relativeOutput")
 
 class TimerNode(BaseModel):
     """Timer node."""

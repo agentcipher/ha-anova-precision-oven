@@ -17,7 +17,7 @@ from anova_oven_sdk.models import RecipeLibrary
 from anova_oven_sdk.exceptions import AnovaError
 
 from .const import DOMAIN, CONF_RECIPES_PATH, RECIPES_FILE
-from .models import AnovaOvenDevice
+from .models import AnovaOvenDevice, Nodes
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -38,11 +38,12 @@ class HAAnovaOven(AnovaOven):
             device_id = payload.get('id') or payload.get('cookerId')
             if device_id and device_id in self._devices:
                 try:
-                    # Attempt to update the device with the new state
-                    # We assume payload is compatible with Device model
-                    device = AnovaOvenDevice.model_validate(payload)
-                    self._devices[device.cooker_id] = device
-                    self._update_callback()
+                    device = self._devices[device_id]
+                    # The payload 'state' contains the nodes data
+                    state_data = payload.get('state')
+                    if state_data:
+                        device.nodes = Nodes.model_validate(state_data)
+                        self._update_callback()
                 except Exception as e:
                     _LOGGER.debug("Failed to process state update: %s", e)
 
