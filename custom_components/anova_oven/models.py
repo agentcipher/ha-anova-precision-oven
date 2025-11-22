@@ -15,7 +15,7 @@ class TemperatureState(BaseModel):
     """Temperature state."""
     model_config = ConfigDict(frozen=False)
     current: Temperature
-    setpoint: Optional[Temperature] = None  # ONLY CHANGE: Make optional since API doesn't always send it
+    setpoint: Temperature
 
 class TemperatureBulbs(BaseModel):
     """Temperature bulbs configuration."""
@@ -40,7 +40,7 @@ class SteamGenerators(BaseModel):
     """Steam generators."""
     model_config = ConfigDict(frozen=False)
     mode: str
-    relative_output: Optional[SteamOutput] = Field(None, alias="relativeOutput")  # ONLY CHANGE: Make optional
+    relative_output: SteamOutput = Field(..., alias="relativeOutput")
 
 class TimerNode(BaseModel):
     """Timer node."""
@@ -68,11 +68,11 @@ class Nodes(BaseModel):
     model_config = ConfigDict(frozen=False)
 
     temperature_bulbs: TemperatureBulbs = Field(..., alias="temperatureBulbs")
-    probe: Optional[ProbeNode] = None  # ONLY CHANGE: Make optional since API doesn't always send it
+    probe: ProbeNode
     steam_generators: SteamGenerators = Field(..., alias="steamGenerators")
     timer: TimerNode
     fan: FanNode
-    exhaust_vent: Optional[ExhaustVentNode] = Field(None, alias="exhaustVent")  # ONLY CHANGE: Make optional
+    exhaust_vent: ExhaustVentNode = Field(..., alias="exhaustVent")
 
 class CookStatus(BaseModel):
     """Cook status."""
