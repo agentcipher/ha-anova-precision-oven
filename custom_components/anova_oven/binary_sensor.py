@@ -51,16 +51,16 @@ BINARY_SENSORS: tuple[AnovaOvenBinarySensorEntityDescription, ...] = (
         name="Probe Connected",
         device_class=BinarySensorDeviceClass.CONNECTIVITY,
         is_on_fn=lambda coord, device_id: (
-            lambda nodes: nodes.temperature_probe.connected if nodes and nodes.temperature_probe else False
-        )(coord.get_device_nodes(device_id)),
+            lambda device: device.nodes.temperature_probe.connected if device and device.nodes and device.nodes.temperature_probe else False
+        )(coord.get_device(device_id)),
     ),
     AnovaOvenBinarySensorEntityDescription(
         key="vent_open",
         name="Vent",
         device_class=BinarySensorDeviceClass.OPENING,
         is_on_fn=lambda coord, device_id: (
-            lambda nodes: nodes.vent.open if nodes and nodes.vent else False
-        )(coord.get_device_nodes(device_id)),
+            lambda device: device.nodes.vent.open if device and device.nodes and device.nodes.vent else False
+        )(coord.get_device(device_id)),
     ),
 )
 

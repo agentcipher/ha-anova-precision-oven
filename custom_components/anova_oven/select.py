@@ -102,9 +102,9 @@ class AnovaOvenTemperatureUnitSelect(AnovaOvenEntity, SelectEntity):
     @property
     def current_option(self) -> str | None:
         """Return the current temperature unit."""
-        state_info = self.coordinator.get_device_state_info(self._device_id)
-        if state_info and hasattr(state_info, 'temperature_unit') and state_info.temperature_unit:
-            return state_info.temperature_unit
+        device = self.coordinator.get_device(self._device_id)
+        if device and device.state_info and hasattr(device.state_info, 'temperature_unit') and device.state_info.temperature_unit:
+            return device.state_info.temperature_unit
         return "C"
 
     async def async_select_option(self, option: str) -> None:
