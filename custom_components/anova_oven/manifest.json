@@ -10,7 +10,7 @@
   "iot_class": "cloud_push",
   "issue_tracker": "https://github.com/agentcipher/ha-anova-oven/issues",
   "requirements": [
-    "anova-precision-oven-sdk==2025.11.9"
+    "anova-precision-oven-sdk==2025.11.10"
   ],
-  "version": "2025.11.18"
+  "version": "2025.11.19"
 }
