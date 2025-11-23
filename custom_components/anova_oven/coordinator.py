@@ -13,11 +13,11 @@ from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, Upda
 
 from anova_oven_sdk import AnovaOven
 from anova_oven_sdk.settings import settings
-from anova_oven_sdk.models import RecipeLibrary
+from anova_oven_sdk.models import RecipeLibrary, DeviceState
 from anova_oven_sdk.exceptions import AnovaError
 
 from .const import DOMAIN, CONF_RECIPES_PATH, RECIPES_FILE
-from .models import AnovaOvenDevice, WebSocketPayload
+from .models import AnovaOvenDevice
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -33,14 +33,20 @@ class HAAnovaOven(AnovaOven):
 
     def _handle_state_update(self, data: dict[str, Any]) -> None:
         """Handle real-time state updates from WebSocket."""
-        if data.get('command') != 'EVENT_APO_STATE':
+        command = data.get('command')
+        _LOGGER.debug("Received WebSocket event: %s", command)
+
+        if command != 'EVENT_APO_STATE':
             return
 
         try:
-            # Use the WebSocketPayload model to handle both formats
-            ws_payload = WebSocketPayload.model_validate(data.get('payload', {}))
+            from anova_oven_sdk.response_models import ApoStateResponse
 
-            device_id = ws_payload.device_id or ws_payload.cooker_id
+            # Validate the full response structure using SDK model
+            response = ApoStateResponse.model_validate(data)
+            payload = response.payload
+
+            device_id = payload.cooker_id
             if not device_id:
                 _LOGGER.warning("Received EVENT_APO_STATE without device ID")
                 return
@@ -53,31 +59,63 @@ class HAAnovaOven(AnovaOven):
             updated = False
 
             # Update nodes if present
-            if ws_payload.nodes:
-                device.nodes = ws_payload.nodes
-                updated = True
-                _LOGGER.debug("Updated nodes for device %s", device_id)
+            if payload.nodes:
+                device.nodes = payload.nodes
 
-            # Update state_info if present
-            if ws_payload.state_info and hasattr(ws_payload.state_info, 'mode'):
-                device.state_info = ws_payload.state_info
+                # Update convenience fields from nodes
+                if device.nodes.temperature_bulbs:
+                    if device.nodes.temperature_bulbs.mode == "dry":
+                        device.current_temperature = device.nodes.temperature_bulbs.dry.current.get('celsius')
+                        if device.nodes.temperature_bulbs.dry.setpoint:
+                            device.target_temperature = device.nodes.temperature_bulbs.dry.setpoint.get('celsius')
+                    else:
+                        device.current_temperature = device.nodes.temperature_bulbs.wet.current.get('celsius')
+                        if device.nodes.temperature_bulbs.wet.setpoint:
+                            device.target_temperature = device.nodes.temperature_bulbs.wet.setpoint.get('celsius')
+
                 updated = True
-                _LOGGER.debug("Updated state_info for device %s: mode=%s, unit=%s",
-                            device_id, device.state_info.mode, device.state_info.temperature_unit)
+                _LOGGER.debug("Updated nodes for device %s (temp: %s°C -> %s°C)",
+                            device_id, device.current_temperature, device.target_temperature)
+
+            # Update state if present
+            if payload.state and hasattr(payload.state, 'mode'):
+                device.state_info = payload.state
+
+                # Map state.mode to device.state (DeviceState enum)
+                mode = payload.state.mode.lower()
+                state_mapping = {
+                    "cook": DeviceState.COOKING,
+                    "cooking": DeviceState.COOKING,
+                    "preheat": DeviceState.PREHEATING,
+                    "preheating": DeviceState.PREHEATING,
+                    "idle": DeviceState.IDLE,
+                    "paused": DeviceState.PAUSED,
+                    "completed": DeviceState.COMPLETED,
+                    "error": DeviceState.ERROR,
+                }
+
+                device.state = state_mapping.get(mode, DeviceState.IDLE)
+                if mode not in state_mapping:
+                    _LOGGER.warning("Unknown state mode '%s', defaulting to IDLE", mode)
+
+                updated = True
+                _LOGGER.debug("Updated state for device %s: mode=%s -> state=%s, unit=%s",
+                            device_id, payload.state.mode, device.state,
+                            payload.state.temperature_unit if hasattr(payload.state, 'temperature_unit') else None)
 
             # Update system info if present
-            if ws_payload.system_info:
-                device.system_info = ws_payload.system_info
+            if payload.system_info:
+                device.system_info = payload.system_info
                 updated = True
                 _LOGGER.debug("Updated system info for device %s", device_id)
 
             # Update version and timestamp if present
-            if ws_payload.version:
-                device.version = ws_payload.version
+            if payload.version:
+                device.version = payload.version
                 updated = True
 
-            if ws_payload.updated_timestamp:
-                device.updated_timestamp = ws_payload.updated_timestamp
+            if payload.updated_timestamp:
+                device.updated_timestamp = payload.updated_timestamp
                 updated = True
 
             # Trigger coordinator update if we updated anything
