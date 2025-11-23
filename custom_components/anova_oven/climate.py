@@ -14,8 +14,6 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from anova_oven_sdk.models import DeviceState
 
-from .models import AnovaOvenDevice
-
 from .const import (
     ATTR_CURRENT_STAGE,
     ATTR_OVEN_VERSION,
@@ -30,9 +28,9 @@ from .entity import AnovaOvenEntity
 
 
 async def async_setup_entry(
-    hass: HomeAssistant,
-    entry: ConfigEntry,
-    async_add_entities: AddEntitiesCallback,
+        hass: HomeAssistant,
+        entry: ConfigEntry,
+        async_add_entities: AddEntitiesCallback,
 ) -> None:
     """Set up Anova Oven climate entities."""
     coordinator: AnovaOvenCoordinator = hass.data[DOMAIN][entry.entry_id]
@@ -49,9 +47,9 @@ class AnovaOvenClimate(AnovaOvenEntity, ClimateEntity):
 
     _attr_temperature_unit = UnitOfTemperature.CELSIUS
     _attr_supported_features = (
-        ClimateEntityFeature.TARGET_TEMPERATURE
-        | ClimateEntityFeature.TURN_ON
-        | ClimateEntityFeature.TURN_OFF
+            ClimateEntityFeature.TARGET_TEMPERATURE
+            | ClimateEntityFeature.TURN_ON
+            | ClimateEntityFeature.TURN_OFF
     )
     _attr_hvac_modes = [HVACMode.OFF, HVACMode.HEAT]
     _attr_min_temp = TEMP_MIN
@@ -77,43 +75,33 @@ class AnovaOvenClimate(AnovaOvenEntity, ClimateEntity):
     @property
     def current_temperature(self) -> float | None:
         """Return the current temperature."""
-        device = self.coordinator.get_device(self._device_id)
-        if not device:
+        nodes = self.coordinator.get_device_nodes(self._device_id)
+        if not nodes or not nodes.temperature_bulbs:
             return None
 
-        if device.current_temperature is not None:
-            return device.current_temperature
-
-        if not device.nodes or not device.nodes.temperature_bulbs:
-            return None
-
-        if device.nodes.temperature_bulbs.mode == "dry":
-            return device.nodes.temperature_bulbs.dry.current.celsius
-        return device.nodes.temperature_bulbs.wet.current.celsius
+        if nodes.temperature_bulbs.mode == "dry":
+            return nodes.temperature_bulbs.dry.current.get('celsius')
+        return nodes.temperature_bulbs.wet.current.get('celsius')
 
     @property
     def target_temperature(self) -> float | None:
         """Return the target temperature."""
-        device = self.coordinator.get_device(self._device_id)
-        if not device:
+        nodes = self.coordinator.get_device_nodes(self._device_id)
+        if not nodes or not nodes.temperature_bulbs:
             return None
 
-        if device.target_temperature is not None:
-            return device.target_temperature
-
-        if not device.nodes or not device.nodes.temperature_bulbs:
-            return None
-
-        if device.nodes.temperature_bulbs.mode == "dry" and device.nodes.temperature_bulbs.dry.setpoint:
-            return device.nodes.temperature_bulbs.dry.setpoint.celsius
-        if device.nodes.temperature_bulbs.wet.setpoint:
-            return device.nodes.temperature_bulbs.wet.setpoint.celsius
+        if nodes.temperature_bulbs.mode == "dry" and nodes.temperature_bulbs.dry.setpoint:
+            return nodes.temperature_bulbs.dry.setpoint.get('celsius')
+        if nodes.temperature_bulbs.wet.setpoint:
+            return nodes.temperature_bulbs.wet.setpoint.get('celsius')
         return None
 
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
         """Return additional state attributes."""
         device = self.coordinator.get_device(self._device_id)
+        nodes = self.coordinator.get_device_nodes(self._device_id)
+
         if not device:
             return {}
 
@@ -121,26 +109,30 @@ class AnovaOvenClimate(AnovaOvenEntity, ClimateEntity):
             ATTR_OVEN_VERSION: device.oven_version.value,
         }
 
-        if device.cook:
-            attrs[ATTR_RECIPE_NAME] = device.cook.name or "Manual Cook"
-            if device.cook.stages:
-                attrs[ATTR_STAGES] = len(device.cook.stages)
-                attrs[ATTR_CURRENT_STAGE] = device.cook.current_stage or 0
+        # TODO: Implement cook data when available
+        # if device.cook:
+        #     attrs[ATTR_RECIPE_NAME] = device.cook.name or "Manual Cook"
+        #     if device.cook.stages:
+        #         attrs[ATTR_STAGES] = len(device.cook.stages)
+        #         attrs[ATTR_CURRENT_STAGE] = device.cook.current_stage or 0
 
-        if device.nodes and device.nodes.temperature_probe and device.nodes.temperature_probe.connected:
-            attrs["probe_temperature"] = device.nodes.temperature_probe.current.celsius if device.nodes.temperature_probe.current else None
-            attrs["probe_target"] = device.nodes.temperature_probe.setpoint.celsius if device.nodes.temperature_probe.setpoint else None
+        if nodes:
+            if nodes.temperature_probe and nodes.temperature_probe.connected:
+                if hasattr(nodes.temperature_probe, 'current') and nodes.temperature_probe.current:
+                    attrs["probe_temperature"] = nodes.temperature_probe.current.get('celsius')
+                if hasattr(nodes.temperature_probe, 'setpoint') and nodes.temperature_probe.setpoint:
+                    attrs["probe_target"] = nodes.temperature_probe.setpoint.get('celsius')
 
-        if device.nodes and device.nodes.temperature_bulbs and device.nodes.temperature_bulbs.mode == "wet":
-            if device.nodes.steam_generators:
-                attrs["steam_mode"] = device.nodes.steam_generators.mode
-                if device.nodes.steam_generators.relative_humidity:
-                    attrs["steam_percentage"] = device.nodes.steam_generators.relative_humidity.current
+            if nodes.temperature_bulbs and nodes.temperature_bulbs.mode == "wet":
+                if nodes.steam_generators:
+                    attrs["steam_mode"] = nodes.steam_generators.mode
+                    if nodes.steam_generators.relative_humidity:
+                        attrs["steam_percentage"] = nodes.steam_generators.relative_humidity.current
 
-        if device.nodes and device.nodes.timer and device.nodes.timer.is_running:
-            attrs["timer_mode"] = device.nodes.timer.mode
-            attrs["timer_initial"] = device.nodes.timer.initial
-            attrs["timer_current"] = device.nodes.timer.current
+            if nodes.timer and nodes.timer.mode != "idle":
+                attrs["timer_mode"] = nodes.timer.mode
+                attrs["timer_initial"] = nodes.timer.initial
+                attrs["timer_current"] = nodes.timer.current
 
         return attrs
 
@@ -151,9 +143,9 @@ class AnovaOvenClimate(AnovaOvenEntity, ClimateEntity):
             return
 
         duration = None
-        device = self.coordinator.get_device(self._device_id)
-        if device and device.nodes and device.nodes.timer and device.nodes.timer.is_running:
-            duration = device.nodes.timer.initial
+        nodes = self.coordinator.get_device_nodes(self._device_id)
+        if nodes and nodes.timer and nodes.timer.mode != "idle":
+            duration = nodes.timer.initial
 
         await self.coordinator.async_start_cook(
             self._device_id,

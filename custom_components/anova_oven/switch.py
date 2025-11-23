@@ -8,8 +8,6 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from anova_oven_sdk.models import DeviceState
 
-from .models import AnovaOvenDevice
-
 from .const import DOMAIN
 from .coordinator import AnovaOvenCoordinator
 from .entity import AnovaOvenEntity
@@ -61,15 +59,15 @@ class AnovaOvenSwitch(AnovaOvenEntity, SwitchEntity):
     async def async_turn_on(self, **kwargs) -> None:
         """Turn on cooking."""
         device = self.coordinator.get_device(self._device_id)
+        nodes = self.coordinator.get_device_nodes(self._device_id)
+
         _LOGGER.debug("Turning on cooking for %s", device.name if device else "unknown")
 
         # Get last known temperature or use default
         target_temp = 180.0
-        if device:
-            if device.target_temperature:
-                target_temp = device.target_temperature
-            elif device.nodes and device.nodes.temperature_bulbs and device.nodes.temperature_bulbs.mode == "dry" and device.nodes.temperature_bulbs.dry.setpoint:
-                target_temp = device.nodes.temperature_bulbs.dry.setpoint.celsius or target_temp
+        if nodes and nodes.temperature_bulbs:
+            if nodes.temperature_bulbs.mode == "dry" and nodes.temperature_bulbs.dry.setpoint:
+                target_temp = nodes.temperature_bulbs.dry.setpoint.get('celsius', target_temp)
 
         try:
             await self.coordinator.async_start_cook(

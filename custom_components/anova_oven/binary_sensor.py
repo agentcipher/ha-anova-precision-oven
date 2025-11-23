@@ -15,8 +15,6 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from anova_oven_sdk.models import DeviceState
 
-from .models import AnovaOvenDevice
-
 from .coordinator import AnovaOvenCoordinator
 from .entity import AnovaOvenEntity
 from .const import DOMAIN
@@ -26,7 +24,7 @@ from .const import DOMAIN
 class AnovaOvenBinarySensorEntityDescription(BinarySensorEntityDescription):
     """Describes Anova Oven binary sensor entity."""
 
-    is_on_fn: Callable[[AnovaOvenDevice], bool] | None = None
+    is_on_fn: Callable[[AnovaOvenCoordinator, str], bool] | None = None
 
 
 BINARY_SENSORS: tuple[AnovaOvenBinarySensorEntityDescription, ...] = (
@@ -34,25 +32,35 @@ BINARY_SENSORS: tuple[AnovaOvenBinarySensorEntityDescription, ...] = (
         key="cooking",
         name="Cooking",
         device_class=BinarySensorDeviceClass.RUNNING,
-        is_on_fn=lambda device: device.state in (DeviceState.COOKING, DeviceState.PREHEATING),
+        is_on_fn=lambda coord, device_id: (
+            coord.get_device(device_id).state in (DeviceState.COOKING, DeviceState.PREHEATING)
+            if coord.get_device(device_id) else False
+        ),
     ),
     AnovaOvenBinarySensorEntityDescription(
         key="preheating",
         name="Preheating",
         device_class=BinarySensorDeviceClass.HEAT,
-        is_on_fn=lambda device: device.state == DeviceState.PREHEATING,
+        is_on_fn=lambda coord, device_id: (
+            coord.get_device(device_id).state == DeviceState.PREHEATING
+            if coord.get_device(device_id) else False
+        ),
     ),
     AnovaOvenBinarySensorEntityDescription(
         key="probe_connected",
         name="Probe Connected",
         device_class=BinarySensorDeviceClass.CONNECTIVITY,
-        is_on_fn=lambda device: device.nodes.temperature_probe and device.nodes.temperature_probe.connected,
+        is_on_fn=lambda coord, device_id: (
+            lambda nodes: nodes.temperature_probe.connected if nodes and nodes.temperature_probe else False
+        )(coord.get_device_nodes(device_id)),
     ),
     AnovaOvenBinarySensorEntityDescription(
         key="vent_open",
         name="Vent",
         device_class=BinarySensorDeviceClass.OPENING,
-        is_on_fn=lambda device: device.nodes.vent and device.nodes.vent.open,
+        is_on_fn=lambda coord, device_id: (
+            lambda nodes: nodes.vent.open if nodes and nodes.vent else False
+        )(coord.get_device_nodes(device_id)),
     ),
 )
 
@@ -94,7 +102,6 @@ class AnovaOvenBinarySensor(AnovaOvenEntity, BinarySensorEntity):
     @property
     def is_on(self) -> bool:
         """Return true if the binary sensor is on."""
-        device = self.coordinator.get_device(self._device_id)
-        if not device or not self.entity_description.is_on_fn:
+        if not self.entity_description.is_on_fn:
             return False
-        return self.entity_description.is_on_fn(device)
+        return self.entity_description.is_on_fn(self.coordinator, self._device_id)
