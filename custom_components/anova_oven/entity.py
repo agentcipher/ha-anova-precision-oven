@@ -45,9 +45,8 @@ class AnovaOvenEntity(CoordinatorEntity[AnovaOvenCoordinator]):
     def available(self) -> bool:
         """Return if entity is available."""
         device = self.coordinator.get_device(self._device_id)
-        nodes = self.coordinator.get_device_nodes(self._device_id)
         return (
             self.coordinator.last_update_success
             and device is not None
-            and nodes is not None
+            and device.nodes is not None
         )
