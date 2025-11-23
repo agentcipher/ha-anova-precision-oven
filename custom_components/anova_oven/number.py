@@ -51,9 +51,9 @@ class AnovaOvenProbeNumber(AnovaOvenEntity, NumberEntity):
     def native_value(self) -> float | None:
         """Return the value reported by the number."""
         device = self.coordinator.get_device(self._device_id)
-        if not device:
+        if not device or not device.nodes.temperature_probe or not device.nodes.temperature_probe.setpoint:
             return None
-        return device.nodes.probe.setpoint.celsius
+        return device.nodes.temperature_probe.setpoint.celsius
 
     @property
     def available(self) -> bool:
@@ -62,7 +62,8 @@ class AnovaOvenProbeNumber(AnovaOvenEntity, NumberEntity):
         return (
             super().available
             and device is not None
-            and device.nodes.probe.connected
+            and device.nodes.temperature_probe is not None
+            and device.nodes.temperature_probe.connected
         )
 
     async def async_set_native_value(self, value: float) -> None:

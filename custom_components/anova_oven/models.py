@@ -29,7 +29,7 @@ class WebSocketPayload(BaseModel):
     version: Optional[int] = None
     updated_timestamp: Optional[str] = Field(None, alias="updatedTimestamp")
     system_info: Optional['SystemInfo'] = Field(None, alias="systemInfo")
-    state: Optional[Union['State', dict]] = None  # Can be State object or wrapper dict
+    state_info: Optional[Union['StateInfo', dict]] = Field(None, alias="state")  # Can be StateInfo object or wrapper dict
     nodes: Optional['Nodes'] = None
 
     # Format 2 specific
@@ -44,7 +44,7 @@ class WebSocketPayload(BaseModel):
         # Try cookerId from the raw data
         return info.data.get('cookerId') or info.data.get('id')
 
-    @field_validator('state', mode='before')
+    @field_validator('state_info', mode='before')
     @classmethod
     def unwrap_nested_state(cls, v, info):
         """Handle Format 2 where everything is nested under 'state'."""
@@ -207,8 +207,8 @@ class SystemInfo(BaseModel):
     last_disconnected_timestamp: Optional[str] = Field(None, alias="lastDisconnectedTimestamp")
     triacs_failed: Optional[bool] = Field(None, alias="triacsFailed")
 
-class State(BaseModel):
-    """Device state - contains temperatureUnit and mode."""
+class StateInfo(BaseModel):
+    """Device state info - contains temperatureUnit and mode."""
     model_config = ConfigDict(frozen=False, extra='ignore')
     mode: str
     temperature_unit: Optional[str] = Field(None, alias="temperatureUnit")
@@ -222,9 +222,9 @@ class CookStatus(BaseModel):
     current_stage: Optional[int] = Field(None, alias="currentStage")
 
 class AnovaOvenDevice(SDKDevice):
-    """Extended Device model with nodes and state."""
+    """Extended Device model with nodes and state_info."""
     nodes: Optional[Nodes] = None
-    state: Optional[State] = None
+    state_info: Optional[StateInfo] = Field(None, alias="state")
     cook: Optional[CookStatus] = None
     system_info: Optional[SystemInfo] = Field(None, alias="systemInfo")
     version: Optional[int] = None

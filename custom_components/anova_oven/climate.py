@@ -84,6 +84,9 @@ class AnovaOvenClimate(AnovaOvenEntity, ClimateEntity):
         if device.current_temperature is not None:
             return device.current_temperature
 
+        if not device.nodes or not device.nodes.temperature_bulbs:
+            return None
+
         if device.nodes.temperature_bulbs.mode == "dry":
             return device.nodes.temperature_bulbs.dry.current.celsius
         return device.nodes.temperature_bulbs.wet.current.celsius
@@ -98,9 +101,14 @@ class AnovaOvenClimate(AnovaOvenEntity, ClimateEntity):
         if device.target_temperature is not None:
             return device.target_temperature
 
-        if device.nodes.temperature_bulbs.mode == "dry":
+        if not device.nodes or not device.nodes.temperature_bulbs:
+            return None
+
+        if device.nodes.temperature_bulbs.mode == "dry" and device.nodes.temperature_bulbs.dry.setpoint:
             return device.nodes.temperature_bulbs.dry.setpoint.celsius
-        return device.nodes.temperature_bulbs.wet.setpoint.celsius
+        if device.nodes.temperature_bulbs.wet.setpoint:
+            return device.nodes.temperature_bulbs.wet.setpoint.celsius
+        return None
 
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
@@ -119,15 +127,17 @@ class AnovaOvenClimate(AnovaOvenEntity, ClimateEntity):
                 attrs[ATTR_STAGES] = len(device.cook.stages)
                 attrs[ATTR_CURRENT_STAGE] = device.cook.current_stage or 0
 
-        if device.nodes.probe.connected:
-            attrs["probe_temperature"] = device.nodes.probe.current.celsius
-            attrs["probe_target"] = device.nodes.probe.setpoint.celsius
+        if device.nodes and device.nodes.temperature_probe and device.nodes.temperature_probe.connected:
+            attrs["probe_temperature"] = device.nodes.temperature_probe.current.celsius if device.nodes.temperature_probe.current else None
+            attrs["probe_target"] = device.nodes.temperature_probe.setpoint.celsius if device.nodes.temperature_probe.setpoint else None
 
-        if device.nodes.temperature_bulbs.mode == "wet":
-            attrs["steam_mode"] = device.nodes.steam_generators.mode
-            attrs["steam_percentage"] = device.nodes.steam_generators.relative_output.percentage
+        if device.nodes and device.nodes.temperature_bulbs and device.nodes.temperature_bulbs.mode == "wet":
+            if device.nodes.steam_generators:
+                attrs["steam_mode"] = device.nodes.steam_generators.mode
+                if device.nodes.steam_generators.relative_humidity:
+                    attrs["steam_percentage"] = device.nodes.steam_generators.relative_humidity.current
 
-        if device.nodes.timer.is_running:
+        if device.nodes and device.nodes.timer and device.nodes.timer.is_running:
             attrs["timer_mode"] = device.nodes.timer.mode
             attrs["timer_initial"] = device.nodes.timer.initial
             attrs["timer_current"] = device.nodes.timer.current
@@ -142,7 +152,7 @@ class AnovaOvenClimate(AnovaOvenEntity, ClimateEntity):
 
         duration = None
         device = self.coordinator.get_device(self._device_id)
-        if device and device.nodes.timer.is_running:
+        if device and device.nodes and device.nodes.timer and device.nodes.timer.is_running:
             duration = device.nodes.timer.initial
 
         await self.coordinator.async_start_cook(

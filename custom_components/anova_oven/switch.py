@@ -68,7 +68,7 @@ class AnovaOvenSwitch(AnovaOvenEntity, SwitchEntity):
         if device:
             if device.target_temperature:
                 target_temp = device.target_temperature
-            elif device.nodes.temperature_bulbs.mode == "dry":
+            elif device.nodes and device.nodes.temperature_bulbs and device.nodes.temperature_bulbs.mode == "dry" and device.nodes.temperature_bulbs.dry.setpoint:
                 target_temp = device.nodes.temperature_bulbs.dry.setpoint.celsius or target_temp
 
         try:

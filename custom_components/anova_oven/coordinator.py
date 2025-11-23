@@ -58,12 +58,12 @@ class HAAnovaOven(AnovaOven):
                 updated = True
                 _LOGGER.debug("Updated nodes for device %s", device_id)
 
-            # Update state if present
-            if ws_payload.state and hasattr(ws_payload.state, 'mode'):
-                device.state = ws_payload.state
+            # Update state_info if present
+            if ws_payload.state_info and hasattr(ws_payload.state_info, 'mode'):
+                device.state_info = ws_payload.state_info
                 updated = True
-                _LOGGER.debug("Updated state for device %s: mode=%s, unit=%s",
-                            device_id, device.state.mode, device.state.temperature_unit)
+                _LOGGER.debug("Updated state_info for device %s: mode=%s, unit=%s",
+                            device_id, device.state_info.mode, device.state_info.temperature_unit)
 
             # Update system info if present
             if ws_payload.system_info:

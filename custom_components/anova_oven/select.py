@@ -114,9 +114,9 @@ class AnovaOvenTemperatureUnitSelect(AnovaOvenEntity, SelectEntity):
         if not device:
             return "C"
 
-        # Temperature unit is in device.state.temperature_unit (from API data)
-        if device.state and hasattr(device.state, 'temperature_unit'):
-            return device.state.temperature_unit if device.state.temperature_unit else "C"
+        # Temperature unit is in device.state_info.temperature_unit (from API data)
+        if device.state_info and hasattr(device.state_info, 'temperature_unit'):
+            return device.state_info.temperature_unit if device.state_info.temperature_unit else "C"
 
         return "C"
 
