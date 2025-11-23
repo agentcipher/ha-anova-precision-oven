@@ -59,15 +59,14 @@ class AnovaOvenSwitch(AnovaOvenEntity, SwitchEntity):
     async def async_turn_on(self, **kwargs) -> None:
         """Turn on cooking."""
         device = self.coordinator.get_device(self._device_id)
-        nodes = self.coordinator.get_device_nodes(self._device_id)
 
         _LOGGER.debug("Turning on cooking for %s", device.name if device else "unknown")
 
         # Get last known temperature or use default
         target_temp = 180.0
-        if nodes and nodes.temperature_bulbs:
-            if nodes.temperature_bulbs.mode == "dry" and nodes.temperature_bulbs.dry.setpoint:
-                target_temp = nodes.temperature_bulbs.dry.setpoint.get('celsius', target_temp)
+        if device and device.nodes and device.nodes.temperature_bulbs:
+            if device.nodes.temperature_bulbs.mode == "dry" and device.nodes.temperature_bulbs.dry.setpoint:
+                target_temp = device.nodes.temperature_bulbs.dry.setpoint.get('celsius', target_temp)
 
         try:
             await self.coordinator.async_start_cook(
