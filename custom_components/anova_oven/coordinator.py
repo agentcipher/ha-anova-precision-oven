@@ -40,8 +40,16 @@ class HAAnovaOven(AnovaOven):
             for device_id, device in list(self._devices.items()):
                 if not isinstance(device, AnovaOvenDevice):
                     try:
-                        # Convert to AnovaOvenDevice with all SDK fields
-                        ha_device = AnovaOvenDevice.model_validate(device.model_dump())
+                        # Get dict from SDK Device and prepare for AnovaOvenDevice
+                        device_dict = device.model_dump()
+
+                        # SDK Device has 'state' as DeviceState enum
+                        # AnovaOvenDevice needs 'state_info' for OvenState
+                        # Keep the enum state, don't pass it to state_info
+                        device_dict.pop('state_nodes', None)  # Remove if exists
+
+                        # Convert to AnovaOvenDevice
+                        ha_device = AnovaOvenDevice.model_validate(device_dict)
                         self._devices[device_id] = ha_device
                         _LOGGER.debug("Converted device %s to AnovaOvenDevice", device_id)
                     except Exception as e:
@@ -75,6 +83,19 @@ class HAAnovaOven(AnovaOven):
                 return
 
             device = self._devices[device_id]
+
+            # Ensure device is converted to AnovaOvenDevice
+            if not isinstance(device, AnovaOvenDevice):
+                _LOGGER.debug("Device %s not yet converted, converting now", device_id)
+                try:
+                    device_dict = device.model_dump()
+                    device_dict.pop('state_nodes', None)
+                    device = AnovaOvenDevice.model_validate(device_dict)
+                    self._devices[device_id] = device
+                except Exception as e:
+                    _LOGGER.error("Failed to convert device during state update: %s", e)
+                    return
+
             updated = False
 
             # Update nodes if present
