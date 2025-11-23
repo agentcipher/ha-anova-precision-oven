@@ -45,12 +45,18 @@ class HAAnovaOven(AnovaOven):
                 payload = response.payload
 
                 device_id = payload.cooker_id
-                if not device_id or device_id not in self._devices:
+                if not device_id:
+                    _LOGGER.warning("Received EVENT_APO_STATE without device ID")
+                    return
+
+                if device_id not in self._devices:
+                    _LOGGER.warning("Received state for unknown device: %s", device_id)
                     return
 
                 # Initialize state data for this device if needed
                 if device_id not in self._device_state_data:
                     self._device_state_data[device_id] = {}
+                    _LOGGER.debug("Initialized state data storage for device %s", device_id)
 
                 state_data = self._device_state_data[device_id]
                 updated = False
@@ -59,6 +65,7 @@ class HAAnovaOven(AnovaOven):
                 if payload.nodes:
                     state_data['nodes'] = payload.nodes
                     updated = True
+                    _LOGGER.debug("Stored nodes for device %s", device_id)
 
                 # Store state info (mode, temperatureUnit, etc.)
                 if payload.state:
@@ -79,6 +86,7 @@ class HAAnovaOven(AnovaOven):
                             "error": DeviceState.ERROR,
                         }
                         device.state = state_mapping.get(mode, DeviceState.IDLE)
+                        _LOGGER.debug("Updated device %s state to %s (from mode: %s)", device_id, device.state, mode)
 
                     updated = True
 
@@ -98,7 +106,7 @@ class HAAnovaOven(AnovaOven):
 
                 # Trigger coordinator update if we updated anything
                 if updated:
-                    _LOGGER.debug("Updated state data for device %s", device_id)
+                    _LOGGER.info("Updated state data for device %s, triggering coordinator refresh", device_id)
                     self._update_callback()
 
             except Exception as e:
@@ -217,7 +225,12 @@ class AnovaOvenCoordinator(DataUpdateCoordinator[dict[str, Device]]):
     def get_device_nodes(self, device_id: str):
         """Get device nodes (detailed state)."""
         state_data = self.anova_oven.get_state_data(device_id)
-        return state_data.get('nodes')
+        nodes = state_data.get('nodes')
+        if nodes:
+            _LOGGER.debug("get_device_nodes(%s) returning nodes: %s", device_id, type(nodes))
+        else:
+            _LOGGER.warning("get_device_nodes(%s) returning None - state_data keys: %s", device_id, list(state_data.keys()) if state_data else "empty")
+        return nodes
 
     def get_device_state_info(self, device_id: str):
         """Get device state info (mode, temperature unit)."""
