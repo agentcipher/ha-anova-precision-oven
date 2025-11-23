@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import logging
 from datetime import timedelta
-from typing import Any
+from typing import Any, Dict
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import CONF_API_TOKEN, CONF_TOKEN
@@ -38,13 +38,10 @@ class HAAnovaOven(AnovaOven):
 
         if command == 'EVENT_APO_STATE':
             try:
-                from anova_oven_sdk.response_models import ApoStateResponse
+                # Get raw payload to handle nested structure
+                raw_payload = data.get('payload', {})
 
-                # Validate the full response structure using SDK model
-                response = ApoStateResponse.model_validate(data)
-                payload = response.payload
-
-                device_id = payload.cooker_id
+                device_id = raw_payload.get('cookerId')
                 if not device_id:
                     _LOGGER.warning("Received EVENT_APO_STATE without device ID")
                     return
@@ -61,20 +58,33 @@ class HAAnovaOven(AnovaOven):
                 state_data = self._device_state_data[device_id]
                 updated = False
 
-                # Store nodes
-                if payload.nodes:
-                    state_data['nodes'] = payload.nodes
+                # For v1 ovens, data is nested under 'state' key
+                nested_state = raw_payload.get('state', {})
+
+                # Store nodes - they're in the nested state for v1
+                if 'nodes' in nested_state:
+                    from anova_oven_sdk.response_models import Nodes
+                    state_data['nodes'] = Nodes.model_validate(nested_state['nodes'])
                     updated = True
-                    _LOGGER.debug("Stored nodes for device %s", device_id)
+                    _LOGGER.info("Stored nodes for device %s", device_id)
+                elif 'nodes' in raw_payload:
+                    # v2 might have nodes at top level
+                    from anova_oven_sdk.response_models import Nodes
+                    state_data['nodes'] = Nodes.model_validate(raw_payload['nodes'])
+                    updated = True
+                    _LOGGER.info("Stored nodes for device %s (top-level)", device_id)
 
                 # Store state info (mode, temperatureUnit, etc.)
-                if payload.state:
-                    state_data['state_info'] = payload.state
+                # This is in nested_state.state for v1
+                if 'state' in nested_state:
+                    from anova_oven_sdk.response_models import OvenState
+                    state_data['state_info'] = OvenState.model_validate(nested_state['state'])
 
                     # Update SDK device state enum based on mode
-                    if hasattr(payload.state, 'mode') and payload.state.mode:
+                    mode_str = nested_state['state'].get('mode')
+                    if mode_str:
                         device = self._devices[device_id]
-                        mode = payload.state.mode.lower()
+                        mode = mode_str.lower()
                         state_mapping = {
                             "cook": DeviceState.COOKING,
                             "cooking": DeviceState.COOKING,
@@ -90,18 +100,19 @@ class HAAnovaOven(AnovaOven):
 
                     updated = True
 
-                # Store system info
-                if payload.system_info:
-                    state_data['system_info'] = payload.system_info
+                # Store system info - in nested state for v1
+                if 'systemInfo' in nested_state:
+                    from anova_oven_sdk.response_models import SystemInfo
+                    state_data['system_info'] = SystemInfo.model_validate(nested_state['systemInfo'])
                     updated = True
 
-                # Store version and timestamp
-                if payload.version:
-                    state_data['version'] = payload.version
+                # Store version and timestamp - in nested state for v1
+                if 'version' in nested_state:
+                    state_data['version'] = nested_state['version']
                     updated = True
 
-                if payload.updated_timestamp:
-                    state_data['updated_timestamp'] = payload.updated_timestamp
+                if 'updatedTimestamp' in nested_state:
+                    state_data['updated_timestamp'] = nested_state['updatedTimestamp']
                     updated = True
 
                 # Trigger coordinator update if we updated anything
