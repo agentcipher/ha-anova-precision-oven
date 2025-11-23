@@ -138,6 +138,42 @@ class AnovaOvenCoordinator(DataUpdateCoordinator[dict[str, Device]]):
             return []
         return self.recipe_library.list_recipes()
 
+    def get_recipe_info(self, recipe_id: str) -> dict[str, Any] | None:
+        """Get recipe information."""
+        if not self.recipe_library:
+            return None
+        try:
+            recipe = self.recipe_library.get_recipe(recipe_id)
+            return {
+                "name": recipe.name,
+                "description": recipe.description,
+                "stages": len(recipe.stages),
+                "oven_version": recipe.oven_version.value if recipe.oven_version else None,
+            }
+        except ValueError:
+            return None
+
+    async def async_start_recipe(self, device_id: str, recipe_id: str) -> None:
+        """Start cooking with a recipe."""
+        if not self.recipe_library:
+            raise ValueError("No recipe library loaded")
+
+        recipe = self.recipe_library.get_recipe(recipe_id)
+        device = self.get_device(device_id)
+
+        if not device:
+            raise ValueError(f"Device {device_id} not found")
+
+        # Validate recipe for oven version
+        recipe.validate_for_oven(device.oven_version)
+
+        # Convert recipe to cook stages
+        stages = recipe.to_cook_stages()
+
+        # Start cook with stages
+        await self.anova_oven.start_cook(device_id, stages=stages)
+        await self.async_request_refresh()
+
     async def async_start_cook(self, device_id: str, **kwargs) -> None:
         """Start cooking."""
         await self.anova_oven.start_cook(device_id, **kwargs)
