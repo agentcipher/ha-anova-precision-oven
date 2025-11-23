@@ -89,6 +89,9 @@ class HAAnovaOven(AnovaOven):
 
             device = self._devices[device_id]
 
+            # Debug: check what we got from SDK
+            _LOGGER.debug("Payload state type: %s, value: %s", type(payload.state), payload.state)
+
             # Ensure device is converted to AnovaOvenDevice
             if not isinstance(device, AnovaOvenDevice):
                 _LOGGER.debug("Device %s not yet converted, converting now", device_id)
@@ -131,30 +134,32 @@ class HAAnovaOven(AnovaOven):
                             device_id, device.current_temperature, device.target_temperature)
 
             # Update state if present
-            if payload.state and hasattr(payload.state, 'mode'):
-                device.state_info = payload.state
+            if payload.state:
+                # Check if state has mode attribute (it's an OvenState object)
+                if hasattr(payload.state, 'mode') and payload.state.mode:
+                    device.state_info = payload.state
 
-                # Map state.mode to device.state (DeviceState enum)
-                mode = payload.state.mode.lower()
-                state_mapping = {
-                    "cook": DeviceState.COOKING,
-                    "cooking": DeviceState.COOKING,
-                    "preheat": DeviceState.PREHEATING,
-                    "preheating": DeviceState.PREHEATING,
-                    "idle": DeviceState.IDLE,
-                    "paused": DeviceState.PAUSED,
-                    "completed": DeviceState.COMPLETED,
-                    "error": DeviceState.ERROR,
-                }
+                    # Map state.mode to device.state (DeviceState enum)
+                    mode = payload.state.mode.lower()
+                    state_mapping = {
+                        "cook": DeviceState.COOKING,
+                        "cooking": DeviceState.COOKING,
+                        "preheat": DeviceState.PREHEATING,
+                        "preheating": DeviceState.PREHEATING,
+                        "idle": DeviceState.IDLE,
+                        "paused": DeviceState.PAUSED,
+                        "completed": DeviceState.COMPLETED,
+                        "error": DeviceState.ERROR,
+                    }
 
-                device.state = state_mapping.get(mode, DeviceState.IDLE)
-                if mode not in state_mapping:
-                    _LOGGER.warning("Unknown state mode '%s', defaulting to IDLE", mode)
+                    device.state = state_mapping.get(mode, DeviceState.IDLE)
+                    if mode not in state_mapping:
+                        _LOGGER.warning("Unknown state mode '%s', defaulting to IDLE", mode)
 
-                updated = True
-                _LOGGER.debug("Updated state for device %s: mode=%s -> state=%s, unit=%s",
-                            device_id, payload.state.mode, device.state,
-                            payload.state.temperature_unit if hasattr(payload.state, 'temperature_unit') else None)
+                    updated = True
+                    _LOGGER.debug("Updated state for device %s: mode=%s -> state=%s, unit=%s",
+                                device_id, payload.state.mode, device.state,
+                                payload.state.temperature_unit if hasattr(payload.state, 'temperature_unit') else None)
 
             # Update system info if present
             if payload.system_info:
