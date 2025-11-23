@@ -40,16 +40,21 @@ class HAAnovaOven(AnovaOven):
             for device_id, device in list(self._devices.items()):
                 if not isinstance(device, AnovaOvenDevice):
                     try:
-                        # Get dict from SDK Device and prepare for AnovaOvenDevice
+                        # Get dict from SDK Device
                         device_dict = device.model_dump()
 
                         # SDK Device has 'state' as DeviceState enum
-                        # AnovaOvenDevice needs 'state_info' for OvenState
-                        # Keep the enum state, don't pass it to state_info
-                        device_dict.pop('state_nodes', None)  # Remove if exists
+                        # AnovaOvenDevice expects 'state_info' for OvenState
+                        # Remove 'state' to avoid conflict - it will be set from WebSocket updates
+                        device_dict.pop('state', None)
+                        device_dict.pop('state_nodes', None)
 
                         # Convert to AnovaOvenDevice
                         ha_device = AnovaOvenDevice.model_validate(device_dict)
+
+                        # Restore the enum state separately
+                        ha_device.state = device.state
+
                         self._devices[device_id] = ha_device
                         _LOGGER.debug("Converted device %s to AnovaOvenDevice", device_id)
                     except Exception as e:
@@ -89,8 +94,16 @@ class HAAnovaOven(AnovaOven):
                 _LOGGER.debug("Device %s not yet converted, converting now", device_id)
                 try:
                     device_dict = device.model_dump()
+                    # Remove conflicting state field
+                    saved_state = device_dict.pop('state', None)
                     device_dict.pop('state_nodes', None)
+
                     device = AnovaOvenDevice.model_validate(device_dict)
+
+                    # Restore enum state
+                    if saved_state:
+                        device.state = saved_state
+
                     self._devices[device_id] = device
                 except Exception as e:
                     _LOGGER.error("Failed to convert device during state update: %s", e)
