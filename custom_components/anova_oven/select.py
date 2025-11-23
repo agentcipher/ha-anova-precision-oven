@@ -9,8 +9,6 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
-from .models import AnovaOvenDevice
-
 from .const import DOMAIN
 from .coordinator import AnovaOvenCoordinator
 from .entity import AnovaOvenEntity
@@ -55,13 +53,7 @@ class AnovaOvenRecipeSelect(AnovaOvenEntity, SelectEntity):
     @property
     def current_option(self) -> str | None:
         """Return the current recipe."""
-        device = self.coordinator.get_device(self._device_id)
-        if not device:
-            return "None"
-
-        if device.cook:
-            return device.cook.name or "None"
-
+        # TODO: Implement when cook data is available
         return "None"
 
     @property
@@ -110,14 +102,9 @@ class AnovaOvenTemperatureUnitSelect(AnovaOvenEntity, SelectEntity):
     @property
     def current_option(self) -> str | None:
         """Return the current temperature unit."""
-        device = self.coordinator.get_device(self._device_id)
-        if not device:
-            return "C"
-
-        # Temperature unit is in device.state_info.temperature_unit (from API data)
-        if device.state_info and hasattr(device.state_info, 'temperature_unit'):
-            return device.state_info.temperature_unit if device.state_info.temperature_unit else "C"
-
+        state_info = self.coordinator.get_device_state_info(self._device_id)
+        if state_info and hasattr(state_info, 'temperature_unit') and state_info.temperature_unit:
+            return state_info.temperature_unit
         return "C"
 
     async def async_select_option(self, option: str) -> None:
