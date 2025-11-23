@@ -28,8 +28,27 @@ class HAAnovaOven(AnovaOven):
     def __init__(self, update_callback, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self._update_callback = update_callback
-        # Register our custom handler for state updates
-        self.client.add_callback(self._handle_state_update)
+        # Add our callback after SDK's built-in handler
+        self.client.add_callback(self._handle_ha_updates)
+
+    def _handle_ha_updates(self, data: dict[str, Any]) -> None:
+        """Handle updates for Home Assistant - runs after SDK's handler."""
+        command = data.get('command')
+
+        if command == 'EVENT_APO_WIFI_LIST':
+            # Convert SDK Device objects to AnovaOvenDevice objects
+            for device_id, device in list(self._devices.items()):
+                if not isinstance(device, AnovaOvenDevice):
+                    try:
+                        # Convert to AnovaOvenDevice with all SDK fields
+                        ha_device = AnovaOvenDevice.model_validate(device.model_dump())
+                        self._devices[device_id] = ha_device
+                        _LOGGER.debug("Converted device %s to AnovaOvenDevice", device_id)
+                    except Exception as e:
+                        _LOGGER.error("Failed to convert device %s: %s", device_id, e)
+
+        elif command == 'EVENT_APO_STATE':
+            self._handle_state_update(data)
 
     def _handle_state_update(self, data: dict[str, Any]) -> None:
         """Handle real-time state updates from WebSocket."""
@@ -127,18 +146,6 @@ class HAAnovaOven(AnovaOven):
         except Exception as e:
             _LOGGER.error("Failed to process state update: %s", e, exc_info=True)
             _LOGGER.debug("Payload: %s", data.get('payload'))
-
-    def _handle_device_list(self, data: dict[str, Any]) -> None:
-        """Handle device discovery messages."""
-        if data.get('command') == 'EVENT_APO_WIFI_LIST':
-            payload = data.get('payload', [])
-            for device_data in payload:
-                try:
-                    device = AnovaOvenDevice.model_validate(device_data)
-                    self._devices[device.cooker_id] = device
-                    _LOGGER.debug("Discovered device: %s", device.cooker_id)
-                except Exception as e:
-                    _LOGGER.error("Device validation error: %s", e)
 
 
 class AnovaOvenCoordinator(DataUpdateCoordinator[dict[str, AnovaOvenDevice]]):
