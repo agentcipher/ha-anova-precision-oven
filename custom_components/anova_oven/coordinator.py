@@ -13,11 +13,10 @@ from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, Upda
 
 from anova_oven_sdk import AnovaOven
 from anova_oven_sdk.settings import settings
-from anova_oven_sdk.models import RecipeLibrary, DeviceState
+from anova_oven_sdk.models import RecipeLibrary, DeviceState, Device
 from anova_oven_sdk.exceptions import AnovaError
 
 from .const import DOMAIN, CONF_RECIPES_PATH, RECIPES_FILE
-from .models import AnovaOvenDevice
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -28,166 +27,89 @@ class HAAnovaOven(AnovaOven):
     def __init__(self, update_callback, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self._update_callback = update_callback
+        # Store additional state data separately from SDK Device objects
+        self._device_state_data: Dict[str, Dict[str, Any]] = {}
         # Add our callback after SDK's built-in handler
-        self.client.add_callback(self._handle_ha_updates)
+        self.client.add_callback(self._handle_ha_state_updates)
 
-    def _handle_ha_updates(self, data: dict[str, Any]) -> None:
-        """Handle updates for Home Assistant - runs after SDK's handler."""
+    def _handle_ha_state_updates(self, data: dict[str, Any]) -> None:
+        """Handle state updates for Home Assistant - runs after SDK's handler."""
         command = data.get('command')
 
-        if command == 'EVENT_APO_WIFI_LIST':
-            # Convert SDK Device objects to AnovaOvenDevice objects
-            for device_id, device in list(self._devices.items()):
-                if not isinstance(device, AnovaOvenDevice):
-                    try:
-                        # Get dict from SDK Device
-                        device_dict = device.model_dump()
+        if command == 'EVENT_APO_STATE':
+            try:
+                from anova_oven_sdk.response_models import ApoStateResponse
 
-                        # SDK Device has 'state' as DeviceState enum
-                        # AnovaOvenDevice expects 'state_info' for OvenState
-                        # Remove 'state' to avoid conflict - it will be set from WebSocket updates
-                        device_dict.pop('state', None)
-                        device_dict.pop('state_nodes', None)
+                # Validate the full response structure using SDK model
+                response = ApoStateResponse.model_validate(data)
+                payload = response.payload
 
-                        # Convert to AnovaOvenDevice
-                        ha_device = AnovaOvenDevice.model_validate(device_dict)
-
-                        # Restore the enum state separately
-                        ha_device.state = device.state
-
-                        self._devices[device_id] = ha_device
-                        _LOGGER.debug("Converted device %s to AnovaOvenDevice", device_id)
-                    except Exception as e:
-                        _LOGGER.error("Failed to convert device %s: %s", device_id, e)
-
-        elif command == 'EVENT_APO_STATE':
-            self._handle_state_update(data)
-
-    def _handle_state_update(self, data: dict[str, Any]) -> None:
-        """Handle real-time state updates from WebSocket."""
-        command = data.get('command')
-        _LOGGER.debug("Received WebSocket event: %s", command)
-
-        if command != 'EVENT_APO_STATE':
-            return
-
-        try:
-            from anova_oven_sdk.response_models import ApoStateResponse
-
-            # Validate the full response structure using SDK model
-            response = ApoStateResponse.model_validate(data)
-            payload = response.payload
-
-            device_id = payload.cooker_id
-            if not device_id:
-                _LOGGER.warning("Received EVENT_APO_STATE without device ID")
-                return
-
-            if device_id not in self._devices:
-                _LOGGER.debug("Received state update for unknown device: %s", device_id)
-                return
-
-            device = self._devices[device_id]
-
-            # Debug: check what we got from SDK
-            _LOGGER.debug("Payload state type: %s, value: %s", type(payload.state), payload.state)
-
-            # Ensure device is converted to AnovaOvenDevice
-            if not isinstance(device, AnovaOvenDevice):
-                _LOGGER.debug("Device %s not yet converted, converting now", device_id)
-                try:
-                    device_dict = device.model_dump()
-                    # Remove conflicting state field
-                    saved_state = device_dict.pop('state', None)
-                    device_dict.pop('state_nodes', None)
-
-                    device = AnovaOvenDevice.model_validate(device_dict)
-
-                    # Restore enum state
-                    if saved_state:
-                        device.state = saved_state
-
-                    self._devices[device_id] = device
-                except Exception as e:
-                    _LOGGER.error("Failed to convert device during state update: %s", e)
+                device_id = payload.cooker_id
+                if not device_id or device_id not in self._devices:
                     return
 
-            updated = False
+                # Initialize state data for this device if needed
+                if device_id not in self._device_state_data:
+                    self._device_state_data[device_id] = {}
 
-            # Update nodes if present
-            if payload.nodes:
-                device.nodes = payload.nodes
+                state_data = self._device_state_data[device_id]
+                updated = False
 
-                # Update convenience fields from nodes
-                if device.nodes.temperature_bulbs:
-                    if device.nodes.temperature_bulbs.mode == "dry":
-                        device.current_temperature = device.nodes.temperature_bulbs.dry.current.get('celsius')
-                        if device.nodes.temperature_bulbs.dry.setpoint:
-                            device.target_temperature = device.nodes.temperature_bulbs.dry.setpoint.get('celsius')
-                    else:
-                        device.current_temperature = device.nodes.temperature_bulbs.wet.current.get('celsius')
-                        if device.nodes.temperature_bulbs.wet.setpoint:
-                            device.target_temperature = device.nodes.temperature_bulbs.wet.setpoint.get('celsius')
+                # Store nodes
+                if payload.nodes:
+                    state_data['nodes'] = payload.nodes
+                    updated = True
 
-                updated = True
-                _LOGGER.debug("Updated nodes for device %s (temp: %s°C -> %s°C)",
-                            device_id, device.current_temperature, device.target_temperature)
+                # Store state info (mode, temperatureUnit, etc.)
+                if payload.state:
+                    state_data['state_info'] = payload.state
 
-            # Update state if present
-            if payload.state:
-                # Check if state has mode attribute (it's an OvenState object)
-                if hasattr(payload.state, 'mode') and payload.state.mode:
-                    device.state_info = payload.state
-
-                    # Map state.mode to device.state (DeviceState enum)
-                    mode = payload.state.mode.lower()
-                    state_mapping = {
-                        "cook": DeviceState.COOKING,
-                        "cooking": DeviceState.COOKING,
-                        "preheat": DeviceState.PREHEATING,
-                        "preheating": DeviceState.PREHEATING,
-                        "idle": DeviceState.IDLE,
-                        "paused": DeviceState.PAUSED,
-                        "completed": DeviceState.COMPLETED,
-                        "error": DeviceState.ERROR,
-                    }
-
-                    device.state = state_mapping.get(mode, DeviceState.IDLE)
-                    if mode not in state_mapping:
-                        _LOGGER.warning("Unknown state mode '%s', defaulting to IDLE", mode)
+                    # Update SDK device state enum based on mode
+                    if hasattr(payload.state, 'mode') and payload.state.mode:
+                        device = self._devices[device_id]
+                        mode = payload.state.mode.lower()
+                        state_mapping = {
+                            "cook": DeviceState.COOKING,
+                            "cooking": DeviceState.COOKING,
+                            "preheat": DeviceState.PREHEATING,
+                            "preheating": DeviceState.PREHEATING,
+                            "idle": DeviceState.IDLE,
+                            "paused": DeviceState.PAUSED,
+                            "completed": DeviceState.COMPLETED,
+                            "error": DeviceState.ERROR,
+                        }
+                        device.state = state_mapping.get(mode, DeviceState.IDLE)
 
                     updated = True
-                    _LOGGER.debug("Updated state for device %s: mode=%s -> state=%s, unit=%s",
-                                device_id, payload.state.mode, device.state,
-                                payload.state.temperature_unit if hasattr(payload.state, 'temperature_unit') else None)
 
-            # Update system info if present
-            if payload.system_info:
-                device.system_info = payload.system_info
-                updated = True
-                _LOGGER.debug("Updated system info for device %s", device_id)
+                # Store system info
+                if payload.system_info:
+                    state_data['system_info'] = payload.system_info
+                    updated = True
 
-            # Update version and timestamp if present
-            if payload.version:
-                device.version = payload.version
-                updated = True
+                # Store version and timestamp
+                if payload.version:
+                    state_data['version'] = payload.version
+                    updated = True
 
-            if payload.updated_timestamp:
-                device.updated_timestamp = payload.updated_timestamp
-                updated = True
+                if payload.updated_timestamp:
+                    state_data['updated_timestamp'] = payload.updated_timestamp
+                    updated = True
 
-            # Trigger coordinator update if we updated anything
-            if updated:
-                self._update_callback()
-            else:
-                _LOGGER.debug("Received state update but nothing changed")
+                # Trigger coordinator update if we updated anything
+                if updated:
+                    _LOGGER.debug("Updated state data for device %s", device_id)
+                    self._update_callback()
 
-        except Exception as e:
-            _LOGGER.error("Failed to process state update: %s", e, exc_info=True)
-            _LOGGER.debug("Payload: %s", data.get('payload'))
+            except Exception as e:
+                _LOGGER.error("Failed to process state update: %s", e, exc_info=True)
+
+    def get_state_data(self, device_id: str) -> Dict[str, Any]:
+        """Get additional state data for a device."""
+        return self._device_state_data.get(device_id, {})
 
 
-class AnovaOvenCoordinator(DataUpdateCoordinator[dict[str, AnovaOvenDevice]]):
+class AnovaOvenCoordinator(DataUpdateCoordinator[dict[str, Device]]):
     """Class to manage fetching Anova Oven data.
 
     Primarily uses WebSocket for real-time updates.
@@ -229,7 +151,7 @@ class AnovaOvenCoordinator(DataUpdateCoordinator[dict[str, AnovaOvenDevice]]):
         """Trigger update from callback."""
         self.async_set_updated_data(self.anova_oven._devices)
 
-    async def _async_update_data(self) -> dict[str, AnovaOvenDevice]:
+    async def _async_update_data(self) -> dict[str, Device]:
         """Connection health check and initial setup.
 
         Initial run: Connect, discover devices, load recipes
@@ -288,9 +210,24 @@ class AnovaOvenCoordinator(DataUpdateCoordinator[dict[str, AnovaOvenDevice]]):
             _LOGGER.warning("Failed to load recipes: %s", err)
             self.recipe_library = RecipeLibrary(recipes={})
 
-    def get_device(self, device_id: str) -> AnovaOvenDevice | None:
+    def get_device(self, device_id: str) -> Device | None:
         """Get device by ID."""
         return self.data.get(device_id)
+
+    def get_device_nodes(self, device_id: str):
+        """Get device nodes (detailed state)."""
+        state_data = self.anova_oven.get_state_data(device_id)
+        return state_data.get('nodes')
+
+    def get_device_state_info(self, device_id: str):
+        """Get device state info (mode, temperature unit)."""
+        state_data = self.anova_oven.get_state_data(device_id)
+        return state_data.get('state_info')
+
+    def get_device_system_info(self, device_id: str):
+        """Get device system info."""
+        state_data = self.anova_oven.get_state_data(device_id)
+        return state_data.get('system_info')
 
     def get_available_recipes(self) -> list[str]:
         """Get list of available recipe IDs."""
