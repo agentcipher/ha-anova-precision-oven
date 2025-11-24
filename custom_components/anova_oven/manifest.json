@@ -12,5 +12,5 @@
   "requirements": [
     "anova-precision-oven-sdk==2025.11.12"
   ],
-  "version": "2025.11.21"
+  "version": "2025.11.22"
 }

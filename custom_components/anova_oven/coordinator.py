@@ -65,9 +65,21 @@ class AnovaOvenCoordinator(DataUpdateCoordinator[dict[str, Device]]):
     def _handle_state_update_callback(self, data: dict[str, Any]) -> None:
         """Callback to trigger coordinator update when SDK receives state updates."""
         command = data.get('command')
+        _LOGGER.debug("WebSocket callback received command: %s", command)
+        
         if command == 'EVENT_APO_STATE':
             _LOGGER.debug("Received state update, triggering coordinator refresh")
             self.async_set_updated_data(self.anova_oven._devices)
+        elif command == 'ERROR':
+            _LOGGER.error("Received ERROR from Anova API: %s", data)
+        elif command == 'RESPONSE':
+            payload = data.get('payload', {})
+            if payload.get('status') != 'success':
+                 _LOGGER.warning("Received non-success RESPONSE: %s", data)
+            else:
+                 _LOGGER.debug("Received success RESPONSE: %s", data)
+        else:
+            _LOGGER.debug("Received unhandled command: %s Payload: %s", command, data)
 
     async def _async_update_data(self) -> dict[str, Device]:
         """Connection health check and initial setup.
