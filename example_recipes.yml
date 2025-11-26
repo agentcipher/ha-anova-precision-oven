@@ -52,6 +52,6 @@ recipes:
           heating_elements:
             top: false
             bottom: true
-            rear: true
+            rear: false
           fan_speed: 100
           rack_position: 3
