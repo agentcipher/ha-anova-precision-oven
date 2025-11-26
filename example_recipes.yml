@@ -10,8 +10,9 @@ recipes:
       
       stages:
         - name: "Stage 1 - Initial Toast"
+          stage_type: "cook"
           temperature:
-            value: 200
+            value: 482
             temperature_unit: "F"
             mode: "DRY"
           timer:
@@ -24,10 +25,11 @@ recipes:
           rack_position: 3
 
         - name: "Stage 2 - Steam Finish"
+          stage_type: "cook"
           temperature:
             value: 482
             temperature_unit: "F"
-            mode: "WET"
+            mode: "DRY"
           steam:
             steam_percentage: 100
           timer:
@@ -40,6 +42,7 @@ recipes:
           rack_position: 3
 
         - name: "Stage 3 - Cool Down"
+          stage_type: "cook"
           temperature:
             value: 77
             temperature_unit: "F"
@@ -51,233 +54,4 @@ recipes:
             bottom: true
             rear: true
           fan_speed: 100
-          rack_position: 3
-
-  # Roast chicken with probe
-  - roast_chicken:
-      name: "Perfect Roast Chicken"
-      description: "Crispy skin, juicy meat using probe monitoring"
-      
-      stages:
-        - name: "Preheat"
-          temperature:
-            value: 220
-            temperature_unit: "C"
-            mode: "DRY"
-          timer:
-            seconds: 600
-          fan_speed: 100
-          heating_elements:
-            top: true
-            bottom: true
-            rear: true
-          rack_position: 3
-
-        - name: "Roast to Temperature"
-          temperature:
-            value: 190
-            temperature_unit: "C"
-            mode: "DRY"
-          probe:
-            target_celsius: 74
-          fan_speed: 75
-          heating_elements:
-            top: true
-            bottom: true
-            rear: true
-          rack_position: 3
-          vent_open: true
-
-        - name: "Rest"
-          temperature:
-            value: 60
-            temperature_unit: "C"
-            mode: "DRY"
-          timer:
-            seconds: 600
-          fan_speed: 50
-          heating_elements:
-            top: false
-            bottom: false
-            rear: true
-          rack_position: 3
-
-  # Sous vide style cooking
-  - sous_vide_salmon:
-      name: "Sous Vide Style Salmon"
-      description: "Low temperature steam cooking for perfect salmon"
-      
-      stages:
-        - name: "Steam Cook"
-          temperature:
-            value: 50
-            temperature_unit: "C"
-            mode: "WET"
-          steam:
-            steam_percentage: 100
-          probe:
-            target_celsius: 48
-          fan_speed: 30
-          heating_elements:
-            top: true
-            bottom: true
-            rear: true
-          rack_position: 3
-
-  # Bread baking
-  - artisan_bread:
-      name: "Artisan Bread"
-      description: "Steam injection for professional-quality crust"
-      
-      stages:
-        - name: "Preheat with Steam"
-          temperature:
-            value: 240
-            temperature_unit: "C"
-            mode: "WET"
-          steam:
-            steam_percentage: 100
-          timer:
-            seconds: 600
-          fan_speed: 100
-          heating_elements:
-            top: true
-            bottom: true
-            rear: true
-          rack_position: 3
-
-        - name: "Initial Bake"
-          temperature:
-            value: 230
-            temperature_unit: "C"
-            mode: "WET"
-          steam:
-            steam_percentage: 50
-          timer:
-            seconds: 900
-          fan_speed: 100
-          heating_elements:
-            top: true
-            bottom: true
-            rear: true
-          rack_position: 3
-          user_action_required: false
-
-        - name: "Finish Dry"
-          temperature:
-            value: 220
-            temperature_unit: "C"
-            mode: "DRY"
-          timer:
-            seconds: 600
-          fan_speed: 75
-          heating_elements:
-            top: true
-            bottom: true
-            rear: true
-          rack_position: 3
-          vent_open: true
-
-  # Pizza
-  - neapolitan_pizza:
-      name: "Neapolitan Pizza"
-      description: "High heat for authentic pizza"
-      
-      stages:
-        - name: "Maximum Preheat"
-          temperature:
-            value: 250
-            temperature_unit: "C"
-            mode: "DRY"
-          timer:
-            seconds: 1200
-          fan_speed: 100
-          heating_elements:
-            top: true
-            bottom: true
-            rear: true
-          rack_position: 7
-
-        - name: "Bake Pizza"
-          temperature:
-            value: 250
-            temperature_unit: "C"
-            mode: "DRY"
-          timer:
-            seconds: 420
-          fan_speed: 100
-          heating_elements:
-            top: true
-            bottom: true
-            rear: true
-          rack_position: 7
-          user_action_required: true
-
-  # Dehydrating
-  - vegetable_chips:
-      name: "Vegetable Chips"
-      description: "Low and slow dehydration"
-      
-      stages:
-        - name: "Dehydrate"
-          temperature:
-            value: 70
-            temperature_unit: "C"
-            mode: "DRY"
-          timer:
-            seconds: 14400  # 4 hours
-          fan_speed: 100
-          heating_elements:
-            top: true
-            bottom: false
-            rear: true
-          rack_position: 3
-          vent_open: true
-
-  # Slow roast
-  - slow_roast_beef:
-      name: "Slow Roast Beef"
-      description: "Low temperature roasting for tender beef"
-      
-      stages:
-        - name: "Initial Sear"
-          temperature:
-            value: 230
-            temperature_unit: "C"
-            mode: "DRY"
-          timer:
-            seconds: 900
-          fan_speed: 100
-          heating_elements:
-            top: true
-            bottom: true
-            rear: true
-          rack_position: 3
-
-        - name: "Low and Slow"
-          temperature:
-            value: 120
-            temperature_unit: "C"
-            mode: "DRY"
-          probe:
-            target_celsius: 55
-          fan_speed: 50
-          heating_elements:
-            top: true
-            bottom: false
-            rear: true
-          rack_position: 3
-
-        - name: "Rest"
-          temperature:
-            value: 60
-            temperature_unit: "C"
-            mode: "DRY"
-          timer:
-            seconds: 900
-          fan_speed: 30
-          heating_elements:
-            top: false
-            bottom: false
-            rear: true
           rack_position: 3
