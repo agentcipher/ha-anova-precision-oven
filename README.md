@@ -13,7 +13,17 @@ Use at your own risk. Always supervise cooking operations and follow manufacture
 
 ---
 
-The goal of this personal project is to allow Anova Precision Ovens to be used in a Home Assistant integration using the official Anova API ([https://developer.anovaculinary.com/docs/devices/wifi/oven-commands](https://developer.anovaculinary.com/docs/devices/wifi/oven-commands)).  The majority of this code was written using Anthropic Claude ([https://claude.ai](https://claude.ai))
+The goal of this personal project is to allow Anova Precision Ovens to be used in a Home Assistant integration using the official Anova API. This integration is built upon the [anova-precision-oven-sdk](https://pypi.org/project/anova-precision-oven-sdk/), providing a robust and type-safe interface to the oven.
+
+The majority of this code was written using Anthropic Claude ([https://claude.ai](https://claude.ai)) and Google DeepMind's Antigravity.
+
+## Technical Details
+
+This integration leverages the `anova-precision-oven-sdk` to provide:
+- **Robust API Communication**: Uses the official Anova API endpoints.
+- **Type Safety**: Fully typed Pydantic models for all API interactions.
+- **Real-time State Management**: Efficient handling of oven state updates.
+- **Broad Compatibility**: Supports both V1 and V2 Anova Precision Ovens.
 
 ## Features
 
