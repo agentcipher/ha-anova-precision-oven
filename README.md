@@ -115,6 +115,9 @@ recipes:
           rack_position: 3
 ```
 
+### Integration
+![Integration Screenshot](docs/home_assistant_integration.png)
+
 ## Credits
 
 Inspired by ha_gehome([https://github.com/simbaja/ha_gehome]) integration patterns.
