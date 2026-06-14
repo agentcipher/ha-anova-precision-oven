@@ -1,6 +1,7 @@
 """DataUpdateCoordinator for Anova Precision Oven."""
 from __future__ import annotations
 
+import json
 import logging
 from datetime import timedelta
 from typing import Any, Dict
@@ -64,11 +65,18 @@ class AnovaOvenCoordinator(DataUpdateCoordinator[dict[str, Device]]):
         # The SDK configures its own logger ("anova_oven", via
         # setup_logging()) rather than this integration's logger hierarchy,
         # so HA's `logger:` config for custom_components.anova_oven has no
-        # effect on it. Mirror our debug level onto it so enabling debug
-        # logging for this integration also surfaces the SDK's own
-        # diagnostic logging (e.g. cook-session stage details).
+        # effect on it. setup_logging() also attaches its own stdout
+        # handler with its own formatting, which duplicates every record
+        # HA's root logger already prints via propagation - drop it so HA's
+        # logger config is the single source of truth for level and output.
+        sdk_logger = logging.getLogger("anova_oven")
+        sdk_logger.handlers.clear()
+
+        # Mirror our debug level onto it so enabling debug logging for this
+        # integration also surfaces the SDK's own diagnostic logging (e.g.
+        # cook-session stage details).
         if _LOGGER.isEnabledFor(logging.DEBUG):
-            logging.getLogger("anova_oven").setLevel(logging.DEBUG)
+            sdk_logger.setLevel(logging.DEBUG)
 
         # Add callback to trigger coordinator updates when SDK receives state updates
         self.anova_oven.client.add_callback(self._handle_state_update_callback)
@@ -80,6 +88,8 @@ class AnovaOvenCoordinator(DataUpdateCoordinator[dict[str, Device]]):
         
         if command == 'EVENT_APO_STATE':
             _LOGGER.debug("Received state update, triggering coordinator refresh")
+            if _LOGGER.isEnabledFor(logging.DEBUG):
+                _LOGGER.debug("EVENT_APO_STATE raw payload: %s", json.dumps(data, default=str))
             self.async_set_updated_data(self.anova_oven._devices)
         elif command == 'ERROR':
             _LOGGER.error("Received ERROR from Anova API: %s", data)
