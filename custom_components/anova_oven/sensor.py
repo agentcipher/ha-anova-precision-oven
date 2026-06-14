@@ -120,7 +120,13 @@ SENSORS: tuple[AnovaOvenSensorEntityDescription, ...] = (
         state_class=SensorStateClass.MEASUREMENT,
         native_unit_of_measurement=PERCENTAGE,
         value_fn=lambda coord, device_id: (
-            lambda device: device.nodes.steam_generators.relative_humidity.current if device.nodes.steam_generators and device.nodes.steam_generators.relative_humidity else None
+            lambda device: (
+                device.nodes.steam_generators.steam_percentage.current
+                if device.nodes.steam_generators.mode == "steam-percentage" and device.nodes.steam_generators.steam_percentage
+                else device.nodes.steam_generators.relative_humidity.current
+                if device.nodes.steam_generators.mode == "relative-humidity" and device.nodes.steam_generators.relative_humidity
+                else None
+            ) if device.nodes.steam_generators else None
         )(coord.get_device(device_id)),
         available_fn=lambda coord, device_id: (
             lambda device: device.nodes.steam_generators.mode != "idle" if device and device.nodes and device.nodes.steam_generators else False

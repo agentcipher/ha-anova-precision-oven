@@ -14,6 +14,7 @@ from homeassistant.const import ATTR_ENTITY_ID
 from homeassistant.core import HomeAssistant
 
 from custom_components.anova_oven.const import DOMAIN
+from anova_oven_sdk.response_models import SteamGenerators
 
 
 async def test_climate_entity_setup(
@@ -255,6 +256,37 @@ async def test_climate_extra_attributes_cooking(
     assert state.attributes["recipe_name"] == "Roast Chicken"
     assert state.attributes["stages"] == 2
     assert state.attributes["rack_position"] == 3
+
+
+async def test_climate_extra_attributes_steam_percentage_mode(
+    hass: HomeAssistant,
+    mock_config_entry,
+    mock_anova_oven: AsyncMock,
+    mock_device,
+):
+    """Test steam attrs are reported for steam-percentage mode, even with dry temperature bulbs."""
+    mock_device.nodes.steam_generators = SteamGenerators.model_validate({
+        "mode": "steam-percentage",
+        "steamPercentage": {"current": 42.0, "setpoint": 100.0},
+        "evaporator": {},
+        "boiler": {},
+    })
+
+    mock_config_entry.add_to_hass(hass)
+    mock_anova_oven.discover_devices.return_value = [mock_device]
+
+    with patch(
+        "custom_components.anova_oven.coordinator.AnovaOven",
+        return_value=mock_anova_oven,
+    ):
+        assert await hass.config_entries.async_setup(mock_config_entry.entry_id)
+        await hass.async_block_till_done()
+        await hass.async_block_till_done()
+
+    state = hass.states.get("climate.test_oven_oven")
+    assert state is not None, "Climate entity was not created"
+    assert state.attributes["steam_mode"] == "steam-percentage"
+    assert state.attributes["steam_percentage"] == 42.0
 
 
 async def test_climate_unavailable_no_state(

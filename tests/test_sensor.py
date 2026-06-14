@@ -6,6 +6,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.const import CONF_TOKEN
 
 from custom_components.anova_oven.const import DOMAIN, CONF_WS_URL, DEFAULT_WS_URL
+from anova_oven_sdk.response_models import SteamGenerators
 
 
 async def test_sensors_created_with_device(
@@ -255,6 +256,62 @@ async def test_sensor_steam_unavailable_when_idle(
 
     state = hass.states.get("sensor.test_oven_steam_percentage")
     assert state.state == "unavailable"
+
+
+async def test_sensor_steam_percentage_mode(
+        hass: HomeAssistant,
+        mock_config_entry,
+        mock_anova_oven: AsyncMock,
+        mock_device,
+):
+    """Test steam sensor reads steamPercentage.current when mode is steam-percentage."""
+    mock_device.nodes.steam_generators = SteamGenerators.model_validate({
+        "mode": "steam-percentage",
+        "steamPercentage": {"current": 42.0, "setpoint": 100.0},
+        "evaporator": {},
+        "boiler": {},
+    })
+
+    mock_config_entry.add_to_hass(hass)
+    mock_anova_oven.discover_devices.return_value = [mock_device]
+
+    with patch(
+            "custom_components.anova_oven.coordinator.AnovaOven",
+            return_value=mock_anova_oven,
+    ):
+        await hass.config_entries.async_setup(mock_config_entry.entry_id)
+        await hass.async_block_till_done()
+
+    state = hass.states.get("sensor.test_oven_steam_percentage")
+    assert state.state == "42.0"
+
+
+async def test_sensor_steam_relative_humidity_mode(
+        hass: HomeAssistant,
+        mock_config_entry,
+        mock_anova_oven: AsyncMock,
+        mock_device,
+):
+    """Test steam sensor reads relativeHumidity.current when mode is relative-humidity."""
+    mock_device.nodes.steam_generators = SteamGenerators.model_validate({
+        "mode": "relative-humidity",
+        "relativeHumidity": {"current": 55.0, "setpoint": 60.0},
+        "evaporator": {},
+        "boiler": {},
+    })
+
+    mock_config_entry.add_to_hass(hass)
+    mock_anova_oven.discover_devices.return_value = [mock_device]
+
+    with patch(
+            "custom_components.anova_oven.coordinator.AnovaOven",
+            return_value=mock_anova_oven,
+    ):
+        await hass.config_entries.async_setup(mock_config_entry.entry_id)
+        await hass.async_block_till_done()
+
+    state = hass.states.get("sensor.test_oven_steam_percentage")
+    assert state.state == "55.0"
 
 
 async def test_sensor_native_value_when_value_fn_none(

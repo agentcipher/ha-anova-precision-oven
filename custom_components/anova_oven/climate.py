@@ -140,11 +140,13 @@ class AnovaOvenClimate(AnovaOvenEntity, ClimateEntity):
                 if hasattr(device.nodes.temperature_probe, 'setpoint') and device.nodes.temperature_probe.setpoint:
                     attrs["probe_target"] = device.nodes.temperature_probe.setpoint.get('celsius')
 
-            if device.nodes.temperature_bulbs and device.nodes.temperature_bulbs.mode == "wet":
-                if device.nodes.steam_generators:
-                    attrs["steam_mode"] = device.nodes.steam_generators.mode
-                    if device.nodes.steam_generators.relative_humidity:
-                        attrs["steam_percentage"] = device.nodes.steam_generators.relative_humidity.current
+            if device.nodes.steam_generators and device.nodes.steam_generators.mode != "idle":
+                steam = device.nodes.steam_generators
+                attrs["steam_mode"] = steam.mode
+                if steam.mode == "steam-percentage" and steam.steam_percentage:
+                    attrs["steam_percentage"] = steam.steam_percentage.current
+                elif steam.mode == "relative-humidity" and steam.relative_humidity:
+                    attrs["steam_percentage"] = steam.relative_humidity.current
 
             if device.nodes.timer and device.nodes.timer.mode != "idle":
                 attrs["timer_mode"] = device.nodes.timer.mode

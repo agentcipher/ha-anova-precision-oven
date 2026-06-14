@@ -61,6 +61,15 @@ class AnovaOvenCoordinator(DataUpdateCoordinator[dict[str, Device]]):
 
         self.anova_oven = AnovaOven()
 
+        # The SDK configures its own logger ("anova_oven", via
+        # setup_logging()) rather than this integration's logger hierarchy,
+        # so HA's `logger:` config for custom_components.anova_oven has no
+        # effect on it. Mirror our debug level onto it so enabling debug
+        # logging for this integration also surfaces the SDK's own
+        # diagnostic logging (e.g. cook-session stage details).
+        if _LOGGER.isEnabledFor(logging.DEBUG):
+            logging.getLogger("anova_oven").setLevel(logging.DEBUG)
+
         # Add callback to trigger coordinator updates when SDK receives state updates
         self.anova_oven.client.add_callback(self._handle_state_update_callback)
 
