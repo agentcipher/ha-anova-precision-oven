@@ -34,8 +34,8 @@ from custom_components.anova_oven.const import (
     DEFAULT_WS_URL,
     DOMAIN,
 )
-from anova_oven_sdk.models import CookData, Device, DeviceState, OvenVersion
-from anova_oven_sdk.response_models import ProbeState
+from anova_oven_sdk.models import Device, DeviceState, OvenVersion
+from anova_oven_sdk.response_models import CookSessionState, ProbeState
 
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
@@ -130,7 +130,7 @@ def mock_cooking_device(mock_device: Device) -> Device:
     mock_device.nodes.timer.mode = "countdown"
     mock_device.nodes.timer.initial = 3600
     mock_device.nodes.timer.current = 1800
-    mock_device.cook = CookData.model_validate(
+    mock_device.cook = CookSessionState.model_validate(
         {
             "cookId": "cook-123",
             "originSource": "app",

@@ -213,6 +213,36 @@ async def test_sensor_cook_session_sensors_while_cooking(
     assert hass.states.get("sensor.test_oven_recipe_name").state == "Manual Cook"
 
 
+async def test_sensor_cook_session_sensors_v1_active_stage_index(
+        hass: HomeAssistant,
+        mock_config_entry,
+        mock_anova_oven: AsyncMock,
+        mock_cooking_device,
+):
+    """Test current_stage/total_stages resolve via cook.active_stage_index on V1 ovens.
+
+    Confirmed against a real V1 EVENT_APO_STATE capture: the live `cook`
+    object reports `activeStageIndex`/`activeStageId` directly, so stage
+    tracking works even for cooks started outside this SDK (e.g. the Anova
+    app), without a registered plan.
+    """
+    mock_cooking_device.cook.active_stage_index = 1
+    mock_cooking_device.cook.active_stage_id = "stage-2"
+
+    mock_config_entry.add_to_hass(hass)
+    mock_anova_oven.discover_devices.return_value = [mock_cooking_device]
+
+    with patch(
+            "custom_components.anova_oven.coordinator.AnovaOven",
+            return_value=mock_anova_oven,
+    ):
+        await hass.config_entries.async_setup(mock_config_entry.entry_id)
+        await hass.async_block_till_done()
+
+    assert hass.states.get("sensor.test_oven_current_stage").state == "2"
+    assert hass.states.get("sensor.test_oven_total_stages").state == "2"
+
+
 async def test_sensor_timer_unavailable_when_idle(
         hass: HomeAssistant,
         mock_config_entry,
