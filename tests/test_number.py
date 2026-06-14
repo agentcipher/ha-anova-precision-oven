@@ -151,9 +151,9 @@ async def test_number_native_value_none(
         mock_device,
 ):
     """Test number entity when probe setpoint is None (number.py line 50)."""
-    # Set probe setpoint to empty dict to return None
-    mock_device.state.nodes["probe"]["setpoint"] = {}
-    mock_device.state.nodes["probe"]["connected"] = True
+    # Clear the probe setpoint to return None
+    mock_device.nodes.temperature_probe.setpoint = None
+    mock_device.nodes.temperature_probe.connected = True
 
     mock_config_entry.add_to_hass(hass)
     mock_anova_oven.discover_devices.return_value = [mock_device]
@@ -177,8 +177,8 @@ async def test_number_native_value_none_probe_setpoint(
         mock_probe_device,
 ):
     """Test number native_value when probe setpoint is None (line 50)."""
-    # Set probe setpoint to empty dict
-    mock_probe_device.state.nodes["probe"]["setpoint"] = {}
+    # Clear the probe setpoint
+    mock_probe_device.nodes.temperature_probe.setpoint = None
 
     mock_config_entry.add_to_hass(hass)
     mock_anova_oven.discover_devices.return_value = [mock_probe_device]
@@ -211,11 +211,11 @@ async def test_number_native_value_no_device(
         await hass.async_block_till_done()
 
         # Manually add a probe target entity for non-existent device
-        from custom_components.anova_oven.number import AnovaOvenProbeTarget
+        from custom_components.anova_oven.number import AnovaOvenProbeNumber
         from custom_components.anova_oven.const import DOMAIN
 
         coordinator = hass.data[DOMAIN][mock_config_entry.entry_id]
-        entity = AnovaOvenProbeTarget(coordinator, "nonexistent-device")
+        entity = AnovaOvenProbeNumber(coordinator, "nonexistent-device")
 
         # Should return None (line 50)
         assert entity.native_value is None

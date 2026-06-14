@@ -17,6 +17,7 @@ from anova_oven_sdk.models import DeviceState
 from .const import (
     ATTR_CURRENT_STAGE,
     ATTR_OVEN_VERSION,
+    ATTR_RACK_POSITION,
     ATTR_RECIPE_NAME,
     ATTR_STAGES,
     DOMAIN,
@@ -81,7 +82,9 @@ class AnovaOvenClimate(AnovaOvenEntity, ClimateEntity):
 
         if device.nodes.temperature_bulbs.mode == "dry":
             return device.nodes.temperature_bulbs.dry.current.get('celsius')
-        return device.nodes.temperature_bulbs.wet.current.get('celsius')
+        if device.nodes.temperature_bulbs.mode == "wet":
+            return device.nodes.temperature_bulbs.wet.current.get('celsius')
+        return None
 
     @property
     def target_temperature(self) -> float | None:
@@ -90,10 +93,18 @@ class AnovaOvenClimate(AnovaOvenEntity, ClimateEntity):
         if not device or not device.nodes or not device.nodes.temperature_bulbs:
             return None
 
-        if device.nodes.temperature_bulbs.mode == "dry" and device.nodes.temperature_bulbs.dry.setpoint:
-            return device.nodes.temperature_bulbs.dry.setpoint.get('celsius')
-        if device.nodes.temperature_bulbs.wet.setpoint:
-            return device.nodes.temperature_bulbs.wet.setpoint.get('celsius')
+        if device.nodes.temperature_bulbs.mode == "dry":
+            return (
+                device.nodes.temperature_bulbs.dry.setpoint.get('celsius')
+                if device.nodes.temperature_bulbs.dry.setpoint
+                else None
+            )
+        if device.nodes.temperature_bulbs.mode == "wet":
+            return (
+                device.nodes.temperature_bulbs.wet.setpoint.get('celsius')
+                if device.nodes.temperature_bulbs.wet.setpoint
+                else None
+            )
         return None
 
     @property
@@ -108,12 +119,19 @@ class AnovaOvenClimate(AnovaOvenEntity, ClimateEntity):
             ATTR_OVEN_VERSION: device.oven_version.value,
         }
 
-        # TODO: Implement cook data when available
-        # if device.cook:
-        #     attrs[ATTR_RECIPE_NAME] = device.cook.name or "Manual Cook"
-        #     if device.cook.stages:
-        #         attrs[ATTR_STAGES] = len(device.cook.stages)
-        #         attrs[ATTR_CURRENT_STAGE] = device.cook.current_stage or 0
+        if device.cook:
+            recipe_id = self.coordinator.get_active_recipe_id(self._device_id)
+            attrs[ATTR_RECIPE_NAME] = (
+                self.coordinator.get_recipe_info(recipe_id)["name"]
+                if recipe_id
+                else "Manual Cook"
+            )
+            if device.total_stage_count is not None:
+                attrs[ATTR_STAGES] = device.total_stage_count
+            if device.current_stage_index is not None:
+                attrs[ATTR_CURRENT_STAGE] = device.current_stage_index
+            if device.rack_position is not None:
+                attrs[ATTR_RACK_POSITION] = device.rack_position
 
         if device.nodes:
             if device.nodes.temperature_probe and device.nodes.temperature_probe.connected:

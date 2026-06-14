@@ -127,21 +127,11 @@ async def test_setup_entry_with_multiple_devices(
     mock_config_entry: MockConfigEntry,
     mock_anova_oven: AsyncMock,
     mock_device,
+    make_device,
 ):
     """Test setup with multiple devices."""
-    # Create a second device with different ID
-    from unittest.mock import MagicMock
-    device2 = MagicMock()
-    device2.cooker_id = "test-device-456"
-    device2.display_name = "Test Oven 2"
-    device2.name = "Test Oven 2"
-    device2.oven_version = mock_device.oven_version
-    device2.device_type = mock_device.device_type
-    device2.model = mock_device.model
-    device2.firmware_version = mock_device.firmware_version
-    device2.wifi_ssid = mock_device.wifi_ssid
-    device2.wifi_strength = mock_device.wifi_strength
-    device2.state = mock_device.state
+    # Create a second device with a different ID
+    device2 = make_device(cookerId="test-device-456", name="Test Oven 2")
 
     mock_config_entry.add_to_hass(hass)
     mock_anova_oven.discover_devices.return_value = [mock_device, device2]
@@ -199,11 +189,8 @@ async def test_async_reload_entry(
         assert await hass.config_entries.async_setup(mock_config_entry.entry_id)
         await hass.async_block_till_done()
 
-        # Import the reload function
-        from custom_components.anova_oven import async_reload_entry
-
         # Reload the entry
-        await async_reload_entry(hass, mock_config_entry)
+        assert await hass.config_entries.async_reload(mock_config_entry.entry_id)
         await hass.async_block_till_done()
 
     # Verify disconnect was called during unload

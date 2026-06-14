@@ -1,5 +1,5 @@
 """Working example of sensor tests for Anova Oven."""
-from unittest.mock import AsyncMock, MagicMock, patch, PropertyMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from homeassistant.core import HomeAssistant
@@ -8,203 +8,73 @@ from homeassistant.const import CONF_TOKEN
 from custom_components.anova_oven.const import DOMAIN, CONF_WS_URL, DEFAULT_WS_URL
 
 
-async def test_sensors_created_with_device(hass: HomeAssistant):
+async def test_sensors_created_with_device(
+    hass: HomeAssistant,
+    mock_config_entry,
+    mock_anova_oven: AsyncMock,
+    mock_device,
+):
     """Test that sensor entities are created when device is discovered."""
-    from pytest_homeassistant_custom_component.common import MockConfigEntry
+    mock_config_entry.add_to_hass(hass)
+    mock_anova_oven.discover_devices.return_value = [mock_device]
 
-    # Create config entry
-    config_entry = MockConfigEntry(
-        domain=DOMAIN,
-        data={
-            CONF_TOKEN: "anova-test-token",
-            CONF_WS_URL: DEFAULT_WS_URL,
-        },
-        entry_id="test_entry",
-    )
-    config_entry.add_to_hass(hass)
-
-    # Create mock device with state
-    mock_device = MagicMock()
-    mock_device.cooker_id = "test-device-123"
-    mock_device.display_name = "Test Oven"
-    mock_device.oven_version = MagicMock()
-    mock_device.oven_version.value = "APO"
-    mock_device.firmware_version = "2.1.0"
-    mock_device.name = "Test Oven"
-
-    # Mock state with proper structure
-    mock_state = MagicMock()
-    mock_state.state = "idle"
-    mock_state.temperature_unit = "C"
-    mock_state.cook = None
-    mock_state.nodes = {
-        "temperatureBulbs": {
-            "mode": "dry",
-            "dry": {
-                "current": {"celsius": 25.0},
-                "setpoint": {"celsius": 180.0},
-            },
-        },
-        "fan": {"speed": 50},
-        "timer": {"mode": "idle"},
-        "steamGenerators": {"mode": "idle"},
-        "probe": {"connected": False},
-    }
-    mock_device.state = mock_state
-
-    # Mock AnovaOven
-    with patch("custom_components.anova_oven.coordinator.AnovaOven") as mock_oven_class:
-        mock_oven = AsyncMock()
-        mock_oven.connect = AsyncMock()
-        mock_oven.disconnect = AsyncMock()
-        mock_oven.discover_devices = AsyncMock(return_value=[mock_device])
-        mock_oven.client = MagicMock()
-        mock_oven.client.ws_url = DEFAULT_WS_URL
-        mock_oven_class.return_value = mock_oven
-
-        # Setup integration
-        assert await hass.config_entries.async_setup(config_entry.entry_id)
+    with patch(
+        "custom_components.anova_oven.coordinator.AnovaOven",
+        return_value=mock_anova_oven,
+    ):
+        assert await hass.config_entries.async_setup(mock_config_entry.entry_id)
         await hass.async_block_till_done()
 
-        # Give entities time to be created
-        await hass.async_block_till_done()
-
-    # Check that some sensor entities were created
     all_entities = hass.states.async_entity_ids()
     sensor_entities = [e for e in all_entities if e.startswith("sensor.")]
-
-    print(f"\n=== Created Entities ===")
-    for entity_id in all_entities:
-        state = hass.states.get(entity_id)
-        print(f"{entity_id}: {state.state if state else 'None'}")
-
     assert len(sensor_entities) > 0, f"No sensors created. All entities: {all_entities}"
 
 
-async def test_temperature_sensor_reads_state(hass: HomeAssistant):
+async def test_temperature_sensor_reads_state(
+    hass: HomeAssistant,
+    mock_config_entry,
+    mock_anova_oven: AsyncMock,
+    mock_device,
+):
     """Test temperature sensor reads from device state."""
-    from pytest_homeassistant_custom_component.common import MockConfigEntry
+    mock_config_entry.add_to_hass(hass)
+    mock_anova_oven.discover_devices.return_value = [mock_device]
 
-    config_entry = MockConfigEntry(
-        domain=DOMAIN,
-        data={CONF_TOKEN: "anova-test-token", CONF_WS_URL: DEFAULT_WS_URL},
-        entry_id="test_entry",
-    )
-    config_entry.add_to_hass(hass)
-
-    # Create device with temperature data
-    mock_device = MagicMock()
-    mock_device.cooker_id = "test-device-123"
-    mock_device.display_name = "Test Oven"
-    mock_device.oven_version = MagicMock(value="APO")
-    mock_device.firmware_version = "2.1.0"
-    mock_device.name = "Test Oven"
-
-    mock_state = MagicMock()
-    mock_state.state = "idle"
-    mock_state.temperature_unit = "C"
-    mock_state.cook = None
-    mock_state.nodes = {
-        "temperatureBulbs": {
-            "mode": "dry",
-            "dry": {
-                "current": {"celsius": 25.0},
-                "setpoint": {"celsius": 180.0},
-            },
-        },
-        "fan": {"speed": 50},
-    }
-    mock_device.state = mock_state
-
-    with patch("custom_components.anova_oven.coordinator.AnovaOven") as mock_oven_class:
-        mock_oven = AsyncMock()
-        mock_oven.connect = AsyncMock()
-        mock_oven.discover_devices = AsyncMock(return_value=[mock_device])
-        mock_oven.client = MagicMock()
-        mock_oven_class.return_value = mock_oven
-
-        await hass.config_entries.async_setup(config_entry.entry_id)
+    with patch(
+        "custom_components.anova_oven.coordinator.AnovaOven",
+        return_value=mock_anova_oven,
+    ):
+        await hass.config_entries.async_setup(mock_config_entry.entry_id)
         await hass.async_block_till_done()
 
-    # Find temperature sensor
-    temp_sensors = [e for e in hass.states.async_entity_ids() if "temperature" in e]
-
-    if temp_sensors:
-        # Check first temperature sensor
-        state = hass.states.get(temp_sensors[0])
-        print(f"\nTemperature sensor {temp_sensors[0]}: {state.state}")
-
-        # Should have a numeric value
-        assert state is not None
-        assert state.state in ["25.0", "180.0", "unknown"]  # Could be current or target
+    state = hass.states.get("sensor.test_oven_current_temperature")
+    assert state is not None
+    assert state.state == "25.0"
 
 
-async def test_wet_mode_temperature(hass: HomeAssistant):
-    """Test temperature with wet mode - the failing test."""
-    from pytest_homeassistant_custom_component.common import MockConfigEntry
+async def test_wet_mode_temperature(
+    hass: HomeAssistant,
+    mock_config_entry,
+    mock_anova_oven: AsyncMock,
+    mock_device,
+):
+    """Test temperature with wet mode."""
+    mock_device.nodes.temperature_bulbs.mode = "wet"
+    mock_device.nodes.temperature_bulbs.wet.current["celsius"] = 95.0
 
-    config_entry = MockConfigEntry(
-        domain=DOMAIN,
-        data={CONF_TOKEN: "anova-test-token", CONF_WS_URL: DEFAULT_WS_URL},
-        entry_id="test_entry",
-    )
-    config_entry.add_to_hass(hass)
+    mock_config_entry.add_to_hass(hass)
+    mock_anova_oven.discover_devices.return_value = [mock_device]
 
-    # Create device with WET mode temperature
-    mock_device = MagicMock()
-    mock_device.cooker_id = "test-device-123"
-    mock_device.display_name = "Test Oven"
-    mock_device.oven_version = MagicMock(value="APO")
-    mock_device.firmware_version = "2.1.0"
-    mock_device.name = "Test Oven"
-
-    mock_state = MagicMock()
-    mock_state.state = "idle"
-    mock_state.temperature_unit = "C"
-    mock_state.cook = None
-    mock_state.nodes = {
-        "temperatureBulbs": {
-            "mode": "wet",  # WET MODE
-            "dry": {
-                "current": {"celsius": 25.0},
-                "setpoint": {"celsius": 180.0},
-            },
-            "wet": {
-                "current": {"celsius": 95.0},  # Different temp for wet mode
-                "setpoint": {"celsius": 100.0},
-            },
-        },
-        "fan": {"speed": 50},
-    }
-    mock_device.state = mock_state
-
-    with patch("custom_components.anova_oven.coordinator.AnovaOven") as mock_oven_class:
-        mock_oven = AsyncMock()
-        mock_oven.connect = AsyncMock()
-        mock_oven.discover_devices = AsyncMock(return_value=[mock_device])
-        mock_oven.client = MagicMock()
-        mock_oven_class.return_value = mock_oven
-
-        await hass.config_entries.async_setup(config_entry.entry_id)
+    with patch(
+        "custom_components.anova_oven.coordinator.AnovaOven",
+        return_value=mock_anova_oven,
+    ):
+        await hass.config_entries.async_setup(mock_config_entry.entry_id)
         await hass.async_block_till_done()
 
-    # Find current temperature sensor
-    all_entities = hass.states.async_entity_ids()
-    print(f"\n=== All entities: {all_entities} ===")
-
-    # The sensor should read 95.0 because mode is "wet"
-    temp_sensors = [e for e in all_entities if "current_temperature" in e]
-
-    if temp_sensors:
-        state = hass.states.get(temp_sensors[0])
-        print(f"Current temp sensor: {state.state}")
-
-        # In wet mode, should read the wet bulb temperature
-        assert state is not None
-        # The actual value depends on how the sensor reads the nested structure
-    else:
-        print("No current_temperature sensor found")
-        print(f"Available sensors: {[e for e in all_entities if e.startswith('sensor.')]}")
+    state = hass.states.get("sensor.test_oven_current_temperature")
+    assert state is not None
+    assert state.state == "95.0"
 
 
 async def test_sensor_availability_function_returns_false(
@@ -214,10 +84,7 @@ async def test_sensor_availability_function_returns_false(
         mock_device,
 ):
     """Test sensor unavailable when available_fn returns False."""
-    # Set probe to disconnected to make probe sensors unavailable
-    mock_device.state.nodes["probe"]["current"] = None
-    mock_device.state.nodes["probe"]["setpoint"] = None
-
+    # Probe is disconnected by default, so probe sensors should be unavailable
     mock_config_entry.add_to_hass(hass)
     mock_anova_oven.discover_devices.return_value = [mock_device]
 
@@ -319,6 +186,32 @@ async def test_sensor_recipe_name_unavailable_when_idle(
     assert state.state == "unavailable"
 
 
+async def test_sensor_cook_session_sensors_while_cooking(
+        hass: HomeAssistant,
+        mock_config_entry,
+        mock_anova_oven: AsyncMock,
+        mock_cooking_device,
+):
+    """Test current_stage/total_stages/rack_position/recipe_name while cooking."""
+    mock_config_entry.add_to_hass(hass)
+    mock_anova_oven.discover_devices.return_value = [mock_cooking_device]
+
+    with patch(
+            "custom_components.anova_oven.coordinator.AnovaOven",
+            return_value=mock_anova_oven,
+    ):
+        await hass.config_entries.async_setup(mock_config_entry.entry_id)
+        await hass.async_block_till_done()
+
+    # mock_cooking_device's registered plan has "stage-1" as stages[0],
+    # so current_stage_index resolves to 1 of total_stage_count 2.
+    assert hass.states.get("sensor.test_oven_current_stage").state == "1"
+    assert hass.states.get("sensor.test_oven_total_stages").state == "2"
+    assert hass.states.get("sensor.test_oven_rack_position").state == "3"
+    # No recipe tracked via async_start_recipe, so falls back to "Manual Cook".
+    assert hass.states.get("sensor.test_oven_recipe_name").state == "Manual Cook"
+
+
 async def test_sensor_timer_unavailable_when_idle(
         hass: HomeAssistant,
         mock_config_entry,
@@ -371,8 +264,8 @@ async def test_sensor_native_value_when_value_fn_none(
         mock_device,
 ):
     """Test sensor native_value when value_fn returns None (line 241)."""
-    # Set device state to None to make value_fn return None
-    mock_device.state = None
+    # Clear device nodes to make value_fn return None
+    mock_device.nodes = None
 
     mock_config_entry.add_to_hass(hass)
     mock_anova_oven.discover_devices.return_value = [mock_device]
@@ -647,54 +540,6 @@ async def test_sensor_line_252_device_none_super_available_true(
         # Line 252: return False  <- THIS LINE
         result = sensor.available
         assert result is False
-
-
-async def test_sensor_available_line_252_force_conditions(
-        hass: HomeAssistant,
-        mock_config_entry,
-        mock_anova_oven: AsyncMock,
-        mock_device,
-):
-    """Force exact conditions to hit line 252: super().available=True, device=None."""
-    from custom_components.anova_oven.sensor import AnovaOvenSensor, AnovaOvenSensorEntityDescription
-    from custom_components.anova_oven.coordinator import AnovaOvenCoordinator
-
-    mock_config_entry.add_to_hass(hass)
-    mock_anova_oven.discover_devices.return_value = [mock_device]
-
-    with patch(
-            "custom_components.anova_oven.coordinator.AnovaOven",
-            return_value=mock_anova_oven,
-    ):
-        coordinator = AnovaOvenCoordinator(hass, mock_config_entry)
-        await coordinator.async_refresh()
-
-        # Create sensor with device that exists
-        description = AnovaOvenSensorEntityDescription(
-            key="test",
-            name="Test",
-            value_fn=lambda d: "value",
-        )
-
-        sensor = AnovaOvenSensor(coordinator, "test-device-123", description)
-
-        # Mock super().available to return True, and get_device to return None
-        with patch.object(
-                type(sensor).__bases__[0],  # AnovaOvenEntity parent class
-                'available',
-                new_callable=PropertyMock,
-                return_value=True
-        ), patch.object(
-            coordinator,
-            'get_device',
-            return_value=None
-        ):
-            # Now call available - should hit line 252
-            # Line 247: super().available is True (mocked)
-            # Line 250-251: device is None (mocked)
-            # Line 252: return False
-            result = sensor.available
-            assert result is False
 
 
 async def test_sensor_line_252_mock_coordinator_get_device(

@@ -70,6 +70,9 @@
       },
       "recipe_name": {
         "name": "Recipe Name"
+      },
+      "rack_position": {
+        "name": "Rack Position"
       }
     },
     "binary_sensor": {

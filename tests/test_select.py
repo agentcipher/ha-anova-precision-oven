@@ -4,6 +4,8 @@ from unittest.mock import AsyncMock, patch, MagicMock
 from homeassistant.const import ATTR_ENTITY_ID, ATTR_OPTION
 from homeassistant.core import HomeAssistant
 
+from custom_components.anova_oven.const import DOMAIN
+
 
 async def test_select_setup(
     hass: HomeAssistant,
@@ -84,13 +86,9 @@ async def test_recipe_select_current_cooking(
     mock_recipe_library,
 ):
     """Test recipe select shows current recipe when cooking."""
-    # Setup mock recipe with same name as cooking device
-    mock_recipe_library.recipes["Roast Chicken"] = mock_recipe_library.recipes["roast_chicken"]
-    mock_recipe_library.list_recipes.return_value = ["roast_chicken", "sourdough", "Roast Chicken"]
-    
     mock_config_entry.add_to_hass(hass)
     mock_anova_oven.discover_devices.return_value = [mock_cooking_device]
-    
+
     with patch(
         "custom_components.anova_oven.coordinator.AnovaOven",
         return_value=mock_anova_oven,
@@ -100,9 +98,13 @@ async def test_recipe_select_current_cooking(
     ):
         await hass.config_entries.async_setup(mock_config_entry.entry_id)
         await hass.async_block_till_done()
-    
+
+        coordinator = hass.data[DOMAIN][mock_config_entry.entry_id]
+        await coordinator.async_start_recipe("test-device-123", "roast_chicken")
+        await hass.async_block_till_done()
+
     state = hass.states.get("select.test_oven_recipe")
-    assert state.state == "Roast Chicken"
+    assert state.state == "roast_chicken"
 
 
 async def test_recipe_select_start_recipe(
@@ -182,7 +184,7 @@ async def test_recipe_select_extra_attributes(
     hass: HomeAssistant,
     mock_config_entry,
     mock_anova_oven: AsyncMock,
-    mock_device,
+    mock_cooking_device,
     mock_recipe_library,
 ):
     """Test recipe select extra attributes."""
@@ -191,14 +193,10 @@ async def test_recipe_select_extra_attributes(
     recipe_mock.description = "Perfect roast chicken"
     recipe_mock.stages = [{"temp": 180}, {"temp": 200}]
     recipe_mock.oven_version = None
-    
-    # Make it look like this recipe is selected
-    mock_device.state.cook = type('obj', (object,), {'name': 'roast_chicken'})()
-    mock_recipe_library.list_recipes.return_value = ["roast_chicken", "sourdough"]
-    
+
     mock_config_entry.add_to_hass(hass)
-    mock_anova_oven.discover_devices.return_value = [mock_device]
-    
+    mock_anova_oven.discover_devices.return_value = [mock_cooking_device]
+
     with patch(
         "custom_components.anova_oven.coordinator.AnovaOven",
         return_value=mock_anova_oven,
@@ -208,7 +206,11 @@ async def test_recipe_select_extra_attributes(
     ):
         await hass.config_entries.async_setup(mock_config_entry.entry_id)
         await hass.async_block_till_done()
-    
+
+        coordinator = hass.data[DOMAIN][mock_config_entry.entry_id]
+        await coordinator.async_start_recipe("test-device-123", "roast_chicken")
+        await hass.async_block_till_done()
+
     state = hass.states.get("select.test_oven_recipe")
     assert "recipe_description" in state.attributes
     assert "recipe_stages" in state.attributes
@@ -273,7 +275,7 @@ async def test_temperature_unit_fahrenheit(
     mock_device,
 ):
     """Test temperature unit select shows Fahrenheit."""
-    mock_device.state.temperature_unit = "F"
+    mock_device.state_info.temperature_unit = "F"
     mock_config_entry.add_to_hass(hass)
     mock_anova_oven.discover_devices.return_value = [mock_device]
     
@@ -356,13 +358,11 @@ async def test_select_extra_attributes_recipe_not_found(
         mock_recipe_library,
 ):
     """Test extra_state_attributes returns {} when recipe_info is None (line 93)."""
-    # Set cook name to something that exists in options but get_recipe_info returns None
-    mock_cooking_device.state.cook.name = "existing_recipe"
-
     mock_config_entry.add_to_hass(hass)
     mock_anova_oven.discover_devices.return_value = [mock_cooking_device]
 
-    # Make list_recipes include it but get_recipe_info return None
+    # Make the active recipe resolvable but get_recipe_info return None
+    mock_recipe_library.recipes["existing_recipe"] = mock_recipe_library.recipes["roast_chicken"]
     mock_recipe_library.list_recipes.return_value = ["existing_recipe"]
 
     with patch(
@@ -375,13 +375,15 @@ async def test_select_extra_attributes_recipe_not_found(
         await hass.config_entries.async_setup(mock_config_entry.entry_id)
         await hass.async_block_till_done()
 
-        # Make get_recipe_info return None
-        from custom_components.anova_oven.const import DOMAIN
         coordinator = hass.data[DOMAIN][mock_config_entry.entry_id]
+        await coordinator.async_start_recipe("test-device-123", "existing_recipe")
+        await hass.async_block_till_done()
+
+        # Make get_recipe_info return None
         coordinator.get_recipe_info = lambda x: None
 
         # Trigger state update
-        await coordinator.async_request_refresh()
+        coordinator.async_set_updated_data(coordinator.data)
         await hass.async_block_till_done()
 
         state = hass.states.get("select.test_oven_recipe")

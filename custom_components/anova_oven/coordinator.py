@@ -33,6 +33,7 @@ class AnovaOvenCoordinator(DataUpdateCoordinator[dict[str, Device]]):
         super().__init__(
             hass,
             _LOGGER,
+            config_entry=entry,
             name=DOMAIN,
             # Very infrequent polling - only for connection health checks
             # WebSocket provides real-time updates
@@ -40,6 +41,7 @@ class AnovaOvenCoordinator(DataUpdateCoordinator[dict[str, Device]]):
         )
         self.entry = entry
         self._initial_setup_done = False
+        self._active_recipes: dict[str, str] = {}
 
         # Try to find the token in various keys
         self.api_token = entry.data.get(CONF_API_TOKEN)
@@ -184,17 +186,32 @@ class AnovaOvenCoordinator(DataUpdateCoordinator[dict[str, Device]]):
 
         # Start cook with stages
         await self.anova_oven.start_cook(device_id, stages=stages)
+        self._active_recipes[device_id] = recipe_id
         await self.async_request_refresh()
 
     async def async_start_cook(self, device_id: str, **kwargs) -> None:
         """Start cooking."""
+        self._active_recipes.pop(device_id, None)
         await self.anova_oven.start_cook(device_id, **kwargs)
         await self.async_request_refresh()
 
     async def async_stop_cook(self, device_id: str) -> None:
         """Stop cooking."""
+        self._active_recipes.pop(device_id, None)
         await self.anova_oven.stop_cook(device_id)
         await self.async_request_refresh()
+
+    def get_active_recipe_id(self, device_id: str) -> str | None:
+        """Get the recipe ID currently cooking on a device, if any.
+
+        Lazily clears the tracked recipe once the device's cook session
+        has ended (e.g. it finished naturally without async_stop_cook).
+        """
+        device = self.get_device(device_id)
+        if not device or not device.cook:
+            self._active_recipes.pop(device_id, None)
+            return None
+        return self._active_recipes.get(device_id)
 
     async def async_set_probe(self, device_id: str, target: float, temperature_unit: str = "C") -> None:
         """Set probe temperature."""

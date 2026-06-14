@@ -62,6 +62,22 @@ BINARY_SENSORS: tuple[AnovaOvenBinarySensorEntityDescription, ...] = (
             lambda device: device.nodes.vent.open if device and device.nodes and device.nodes.vent else False
         )(coord.get_device(device_id)),
     ),
+    AnovaOvenBinarySensorEntityDescription(
+        key="door",
+        name="Door",
+        device_class=BinarySensorDeviceClass.OPENING,
+        is_on_fn=lambda coord, device_id: (
+            lambda device: not device.nodes.door.closed if device and device.nodes and device.nodes.door else False
+        )(coord.get_device(device_id)),
+    ),
+    AnovaOvenBinarySensorEntityDescription(
+        key="water_low",
+        name="Water Low",
+        device_class=BinarySensorDeviceClass.PROBLEM,
+        is_on_fn=lambda coord, device_id: (
+            lambda device: device.nodes.water_tank.empty if device and device.nodes and device.nodes.water_tank else False
+        )(coord.get_device(device_id)),
+    ),
 )
 
 

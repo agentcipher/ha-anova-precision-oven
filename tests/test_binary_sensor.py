@@ -4,6 +4,8 @@ from unittest.mock import AsyncMock, patch
 from homeassistant.const import STATE_OFF, STATE_ON
 from homeassistant.core import HomeAssistant
 
+from anova_oven_sdk.models import DeviceState
+
 
 async def test_binary_sensor_setup(
     hass: HomeAssistant,
@@ -80,7 +82,7 @@ async def test_preheating_binary_sensor(
     mock_device,
 ):
     """Test preheating binary sensor."""
-    mock_device.state.state = "preheating"
+    mock_device.state = DeviceState.PREHEATING
     mock_config_entry.add_to_hass(hass)
     mock_anova_oven.discover_devices.return_value = [mock_device]
     
@@ -106,7 +108,7 @@ async def test_door_binary_sensor_closed(
     mock_device,
 ):
     """Test door binary sensor when closed."""
-    mock_device.state.nodes["door"]["open"] = False
+    mock_device.nodes.door.closed = True
     mock_config_entry.add_to_hass(hass)
     mock_anova_oven.discover_devices.return_value = [mock_device]
     
@@ -128,7 +130,7 @@ async def test_door_binary_sensor_open(
     mock_device,
 ):
     """Test door binary sensor when open."""
-    mock_device.state.nodes["door"]["open"] = True
+    mock_device.nodes.door.closed = False
     mock_config_entry.add_to_hass(hass)
     mock_anova_oven.discover_devices.return_value = [mock_device]
     
@@ -150,7 +152,7 @@ async def test_water_low_binary_sensor(
     mock_device,
 ):
     """Test water low binary sensor."""
-    mock_device.state.nodes["waterTank"]["low"] = True
+    mock_device.nodes.water_tank.empty = True
     mock_config_entry.add_to_hass(hass)
     mock_anova_oven.discover_devices.return_value = [mock_device]
     
@@ -193,7 +195,7 @@ async def test_vent_binary_sensor_open(
     mock_device,
 ):
     """Test vent binary sensor when open."""
-    mock_device.state.nodes["exhaustVent"]["state"] = "open"
+    mock_device.nodes.vent.open = True
     mock_config_entry.add_to_hass(hass)
     mock_anova_oven.discover_devices.return_value = [mock_device]
     
@@ -237,7 +239,7 @@ async def test_binary_sensor_vent_closed(
         mock_device,
 ):
     """Test vent binary sensor when closed (binary_sensor.py line 130)."""
-    mock_device.state.nodes["exhaustVent"]["state"] = "closed"
+    mock_device.nodes.vent.open = False
     mock_config_entry.add_to_hass(hass)
     mock_anova_oven.discover_devices.return_value = [mock_device]
 
@@ -258,8 +260,7 @@ async def test_binary_sensor_vent_no_state_in_node(
     mock_device,
 ):
     """Test vent binary sensor when exhaustVent state key missing (line 130)."""
-    # Remove the state key to test the else branch
-    mock_device.state.nodes["exhaustVent"] = {}
+    # vent.open defaults to False when not reported by the device
     mock_config_entry.add_to_hass(hass)
     mock_anova_oven.discover_devices.return_value = [mock_device]
 

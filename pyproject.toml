@@ -1,0 +1,10 @@
+# Dependency groups for local / devcontainer development.
+# pytest-homeassistant-custom-component pulls in a matching homeassistant
+# release plus pytest, pytest-asyncio, pytest-cov, etc.
+#
+# Install with: pip install --group test
+[dependency-groups]
+test = [
+    "pytest-homeassistant-custom-component",
+    "anova-precision-oven-sdk==2026.06.1",
+]

@@ -228,6 +228,7 @@ async def test_climate_extra_attributes_cooking(
     mock_config_entry,
     mock_anova_oven: AsyncMock,
     mock_cooking_device,
+    mock_recipe_library,
 ):
     """Test extra attributes when cooking."""
     mock_config_entry.add_to_hass(hass)
@@ -236,9 +237,16 @@ async def test_climate_extra_attributes_cooking(
     with patch(
         "custom_components.anova_oven.coordinator.AnovaOven",
         return_value=mock_anova_oven,
+    ), patch(
+        "custom_components.anova_oven.coordinator.RecipeLibrary.from_yaml_file",
+        return_value=mock_recipe_library,
     ):
         assert await hass.config_entries.async_setup(mock_config_entry.entry_id)
         await hass.async_block_till_done()
+        await hass.async_block_till_done()
+
+        coordinator = hass.data[DOMAIN][mock_config_entry.entry_id]
+        await coordinator.async_start_recipe("test-device-123", "roast_chicken")
         await hass.async_block_till_done()
 
     state = hass.states.get("climate.test_oven_oven")
@@ -246,6 +254,7 @@ async def test_climate_extra_attributes_cooking(
     assert state.attributes["current_stage"] == 1
     assert state.attributes["recipe_name"] == "Roast Chicken"
     assert state.attributes["stages"] == 2
+    assert state.attributes["rack_position"] == 3
 
 
 async def test_climate_unavailable_no_state(
@@ -281,8 +290,8 @@ async def test_climate_temperature_with_wet_mode(
     mock_device,
 ):
     """Test temperature reading with wet mode."""
-    mock_device.state.nodes["temperatureBulbs"]["mode"] = "wet"
-    mock_device.state.nodes["temperatureBulbs"]["wet"]["current"]["celsius"] = 100.0
+    mock_device.nodes.temperature_bulbs.mode = "wet"
+    mock_device.nodes.temperature_bulbs.wet.current["celsius"] = 100.0
 
     mock_config_entry.add_to_hass(hass)
     mock_anova_oven.discover_devices.return_value = [mock_device]
@@ -308,7 +317,7 @@ async def test_climate_current_temperature_no_mode_in_bulbs(
 ):
     """Test current temperature when mode key is missing from temperatureBulbs."""
     # Remove the mode from the temperature bulbs to test line 95
-    mock_device.state.nodes["temperatureBulbs"]["mode"] = "nonexistent_mode"
+    mock_device.nodes.temperature_bulbs.mode = "nonexistent_mode"
 
     mock_config_entry.add_to_hass(hass)
     mock_anova_oven.discover_devices.return_value = [mock_device]
@@ -334,7 +343,7 @@ async def test_climate_target_temperature_no_mode_in_bulbs(
 ):
     """Test target temperature when mode key is missing from temperatureBulbs."""
     # Remove the mode from the temperature bulbs to test line 111
-    mock_device.state.nodes["temperatureBulbs"]["mode"] = "nonexistent_mode"
+    mock_device.nodes.temperature_bulbs.mode = "nonexistent_mode"
 
     mock_config_entry.add_to_hass(hass)
     mock_anova_oven.discover_devices.return_value = [mock_device]
@@ -360,9 +369,9 @@ async def test_climate_set_temperature_with_timer(
 ):
     """Test setting temperature preserves timer duration."""
     # Set up a cooking device with active timer to test line 163
-    mock_cooking_device.state.nodes["timer"]["mode"] = "countdown"
-    mock_cooking_device.state.nodes["timer"]["initial"] = 3600
-    mock_cooking_device.state.nodes["timer"]["current"] = 1800
+    mock_cooking_device.nodes.timer.mode = "countdown"
+    mock_cooking_device.nodes.timer.initial = 3600
+    mock_cooking_device.nodes.timer.current = 1800
 
     mock_config_entry.add_to_hass(hass)
     mock_anova_oven.discover_devices.return_value = [mock_cooking_device]
@@ -398,7 +407,7 @@ async def test_climate_set_hvac_heat_with_no_target(
 ):
     """Test setting HVAC to heat when no target temperature exists."""
     # Remove setpoint to test line 171 (default 180.0)
-    mock_device.state.nodes["temperatureBulbs"]["dry"]["setpoint"] = {}
+    mock_device.nodes.temperature_bulbs.dry.setpoint = None
 
     mock_config_entry.add_to_hass(hass)
     mock_anova_oven.discover_devices.return_value = [mock_device]
@@ -433,9 +442,9 @@ async def test_climate_set_temperature_preserves_timer_duration(
 ):
     """Test that set_temperature preserves timer duration when cooking (line 163)."""
     # Set up active timer
-    mock_cooking_device.state.nodes["timer"]["mode"] = "countdown"
-    mock_cooking_device.state.nodes["timer"]["initial"] = 3600
-    mock_cooking_device.state.nodes["timer"]["current"] = 1800
+    mock_cooking_device.nodes.timer.mode = "countdown"
+    mock_cooking_device.nodes.timer.initial = 3600
+    mock_cooking_device.nodes.timer.current = 1800
 
     mock_config_entry.add_to_hass(hass)
     mock_anova_oven.discover_devices.return_value = [mock_cooking_device]
@@ -476,7 +485,7 @@ async def test_climate_set_temperature_preserves_timer_duration(
     ):
         """Test setting HVAC mode to HEAT when target temperature is None (climate.py line 163)."""
         # Set target temperature to None
-        mock_device.state.nodes["temperatureBulbs"]["dry"]["setpoint"] = {}
+        mock_device.nodes.temperature_bulbs.dry.setpoint = None
 
         mock_config_entry.add_to_hass(hass)
         mock_anova_oven.discover_devices.return_value = [mock_device]
@@ -513,7 +522,7 @@ async def test_climate_set_hvac_heat_uses_default_temp(
 ):
     """Test HVAC HEAT mode uses default 180.0 when target is None (climate.py line 163)."""
     # Remove setpoint to make target_temperature None
-    mock_device.state.nodes["temperatureBulbs"]["dry"]["setpoint"] = {}
+    mock_device.nodes.temperature_bulbs.dry.setpoint = None
 
     mock_config_entry.add_to_hass(hass)
     mock_anova_oven.discover_devices.return_value = [mock_device]

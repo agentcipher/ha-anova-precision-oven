@@ -5,6 +5,7 @@ from homeassistant.components.number import (
     NumberDeviceClass,
     NumberEntity,
     NumberEntityDescription,
+    NumberMode,
 )
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import UnitOfTemperature
@@ -13,7 +14,7 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from anova_oven_sdk.models import Device
 
-from .const import DOMAIN, TEMP_MAX, TEMP_MIN
+from .const import DOMAIN, PROBE_TEMP_MAX, PROBE_TEMP_MIN
 from .coordinator import AnovaOvenCoordinator
 from .entity import AnovaOvenEntity
 
@@ -38,9 +39,10 @@ class AnovaOvenProbeNumber(AnovaOvenEntity, NumberEntity):
 
     _attr_device_class = NumberDeviceClass.TEMPERATURE
     _attr_native_unit_of_measurement = UnitOfTemperature.CELSIUS
-    _attr_native_min_value = TEMP_MIN
-    _attr_native_max_value = TEMP_MAX
-    _attr_native_step = 1.0
+    _attr_native_min_value = PROBE_TEMP_MIN
+    _attr_native_max_value = PROBE_TEMP_MAX
+    _attr_native_step = 0.5
+    _attr_mode = NumberMode.BOX
 
     def __init__(self, coordinator: AnovaOvenCoordinator, device_id: str) -> None:
         """Initialize the number entity."""
@@ -53,7 +55,7 @@ class AnovaOvenProbeNumber(AnovaOvenEntity, NumberEntity):
         device = self.coordinator.get_device(self._device_id)
         if not device or not device.nodes or not device.nodes.temperature_probe or not device.nodes.temperature_probe.setpoint:
             return None
-        return device.nodes.temperature_probe.setpoint.celsius
+        return device.nodes.temperature_probe.setpoint.get('celsius')
 
     @property
     def available(self) -> bool:

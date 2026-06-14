@@ -21,8 +21,6 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.typing import StateType
 
-from anova_oven_sdk.models import DeviceState, Device
-
 from .const import DOMAIN
 from .coordinator import AnovaOvenCoordinator
 from .entity import AnovaOvenEntity
@@ -140,20 +138,47 @@ SENSORS: tuple[AnovaOvenSensorEntityDescription, ...] = (
     AnovaOvenSensorEntityDescription(
         key="current_stage",
         name="Current Stage",
-        value_fn=lambda coord, device_id: None,  # TODO: Implement when cook data is available
-        available_fn=lambda coord, device_id: coord.get_device(device_id).state == DeviceState.COOKING if coord.get_device(device_id) else False,
+        # 1-based position within the cook's stage plan, resolved by the SDK
+        # via Device.register_cook_plan(). Only available for cooks started
+        # through this integration; None for cooks started from the Anova app.
+        value_fn=lambda coord, device_id: (
+            lambda device: device.current_stage_index
+        )(coord.get_device(device_id)),
+        available_fn=lambda coord, device_id: (
+            lambda device: device.cook is not None if device else False
+        )(coord.get_device(device_id)),
     ),
     AnovaOvenSensorEntityDescription(
         key="total_stages",
         name="Total Stages",
-        value_fn=lambda coord, device_id: None,  # TODO: Implement when cook data is available
-        available_fn=lambda coord, device_id: coord.get_device(device_id).state == DeviceState.COOKING if coord.get_device(device_id) else False,
+        value_fn=lambda coord, device_id: (
+            lambda device: device.total_stage_count
+        )(coord.get_device(device_id)),
+        available_fn=lambda coord, device_id: (
+            lambda device: device.cook is not None if device else False
+        )(coord.get_device(device_id)),
     ),
     AnovaOvenSensorEntityDescription(
         key="recipe_name",
         name="Recipe Name",
-        value_fn=lambda coord, device_id: None,  # TODO: Implement when cook data is available
-        available_fn=lambda coord, device_id: coord.get_device(device_id).state == DeviceState.COOKING if coord.get_device(device_id) else False,
+        value_fn=lambda coord, device_id: (
+            coord.get_recipe_info(recipe_id)["name"]
+            if (recipe_id := coord.get_active_recipe_id(device_id))
+            else "Manual Cook"
+        ),
+        available_fn=lambda coord, device_id: (
+            lambda device: device.cook is not None if device else False
+        )(coord.get_device(device_id)),
+    ),
+    AnovaOvenSensorEntityDescription(
+        key="rack_position",
+        name="Rack Position",
+        value_fn=lambda coord, device_id: (
+            lambda device: device.rack_position
+        )(coord.get_device(device_id)),
+        available_fn=lambda coord, device_id: (
+            lambda device: device.cook is not None if device else False
+        )(coord.get_device(device_id)),
     ),
 )
 

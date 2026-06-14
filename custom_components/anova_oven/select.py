@@ -53,8 +53,8 @@ class AnovaOvenRecipeSelect(AnovaOvenEntity, SelectEntity):
     @property
     def current_option(self) -> str | None:
         """Return the current recipe."""
-        # TODO: Implement when cook data is available
-        return "None"
+        recipe_id = self.coordinator.get_active_recipe_id(self._device_id)
+        return recipe_id if recipe_id else "None"
 
     @property
     def options(self) -> list[str]:

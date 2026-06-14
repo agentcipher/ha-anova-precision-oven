@@ -34,7 +34,8 @@ from custom_components.anova_oven.const import (
     DEFAULT_WS_URL,
     DOMAIN,
 )
-from custom_components.anova_oven.anova_sdk.models import OvenVersion
+from anova_oven_sdk.models import CookData, Device, DeviceState, OvenVersion
+from anova_oven_sdk.response_models import ProbeState
 
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
@@ -60,97 +61,115 @@ def mock_config_entry() -> MockConfigEntry:
     )
 
 
-@pytest.fixture
-def mock_device() -> MagicMock:
-    """Return a mock device."""
-    device = MagicMock()
-    device.cooker_id = "test-device-123"
-    device.display_name = "Test Oven"
-    device.name = "Test Oven"
-
-    # ✅ FIXED: Use OvenVersion Enum - device.oven_version returns the enum
-    device.oven_version = OvenVersion.V2  # This is an Enum
-    device.device_type = OvenVersion.V2
-
-    # The model property should return "Precision Oven APO" for display
-    # This is what Home Assistant uses in device_info
-    device.model = "Precision Oven APO"
-
-    device.firmware_version = "2.1.0"
-    device.wifi_ssid = "TestWiFi"
-    device.wifi_strength = 85
-
-    # Mock state
-    state = MagicMock()
-    state.state = "idle"
-    state.temperature_unit = "C"
-    state.cook = None
-
-    # Mock nodes
-    state.nodes = {
+def _default_nodes_payload() -> dict:
+    """Return a realistic, fully-populated idle "nodes" payload."""
+    return {
         "temperatureBulbs": {
             "mode": "dry",
-            "dry": {
-                "current": {"celsius": 25.0, "fahrenheit": 77.0},
-                "setpoint": {"celsius": 180.0, "fahrenheit": 356.0},
-            },
             "wet": {
                 "current": {"celsius": 25.0, "fahrenheit": 77.0},
                 "setpoint": {"celsius": 180.0, "fahrenheit": 356.0},
             },
+            "dry": {
+                "current": {"celsius": 25.0, "fahrenheit": 77.0},
+                "setpoint": {"celsius": 180.0, "fahrenheit": 356.0},
+            },
+            "dryTop": {"current": {"celsius": 25.0, "fahrenheit": 77.0}},
+            "dryBottom": {"current": {"celsius": 25.0, "fahrenheit": 77.0}},
         },
-        "door": {"open": False},
-        "waterTank": {"low": False},
-        "probe": {
-            "connected": False,
-            "current": {},  # Empty dict instead of None
-            "setpoint": {},  # Empty dict instead of None
+        "timer": {"mode": "idle", "initial": 0, "current": 0},
+        "temperatureProbe": {"connected": False, "current": None, "setpoint": None},
+        "steamGenerators": {"mode": "idle", "evaporator": {}, "boiler": {}},
+        "heatingElements": {
+            "top": {"on": False, "failed": False, "watts": 0},
+            "bottom": {"on": False, "failed": False, "watts": 0},
+            "rear": {"on": False, "failed": False, "watts": 0},
         },
-        "exhaustVent": {"state": "closed"},
-        "timer": {"mode": "idle", "current": None, "initial": None},
-        "steamGenerators": {
-            "mode": "idle",
-            "relativeOutput": {"percentage": 0},
-        },
-        "fan": {"speed": 50},
+        "fan": {"speed": 50, "failed": False},
+        "vent": {"open": False},
+        "waterTank": {"empty": False},
+        "door": {"closed": True},
+        "lamp": {"on": False, "failed": False, "preference": "off"},
+        "userInterfaceCircuit": {"communicationFailed": False},
     }
 
-    device.state = state
-    return device
+
+def _make_device(**overrides) -> Device:
+    """Build a real Device instance from a realistic API payload."""
+    payload = {
+        "cookerId": "test-device-123",
+        "name": "Test Oven",
+        "pairedAt": "2024-01-01T00:00:00Z",
+        "type": OvenVersion.V2.value,
+        "state": DeviceState.IDLE.value,
+        "nodes": _default_nodes_payload(),
+        "state_info": {"mode": "idle", "temperatureUnit": "C"},
+        "cook": None,
+    }
+    payload.update(overrides)
+    return Device.model_validate(payload)
 
 
 @pytest.fixture
-def mock_cooking_device(mock_device) -> MagicMock:
-    """Return a mock device that is cooking."""
-    mock_device.state.state = "cooking"
+def mock_device() -> Device:
+    """Return a real Device instance representing an idle oven."""
+    return _make_device()
 
-    # Add cook info
-    cook = MagicMock()
-    cook.name = "Roast Chicken"
-    cook.current_stage = 1
-    cook.stages = [
-        {"temperature": 180, "duration": 3600},
-        {"temperature": 200, "duration": 1800},
-    ]
-    mock_device.state.cook = cook
 
-    # Update nodes for cooking
-    mock_device.state.nodes["temperatureBulbs"]["dry"]["current"]["celsius"] = 175.0
-    mock_device.state.nodes["timer"]["mode"] = "countdown"
-    mock_device.state.nodes["timer"]["current"] = 1800
-    mock_device.state.nodes["timer"]["initial"] = 3600
+@pytest.fixture
+def make_device():
+    """Return a factory for building additional real Device instances."""
+    return _make_device
 
+
+@pytest.fixture
+def mock_cooking_device(mock_device: Device) -> Device:
+    """Return a real Device instance representing an oven mid-cook."""
+    mock_device.state = DeviceState.COOKING
+    mock_device.nodes.temperature_bulbs.dry.current["celsius"] = 175.0
+    mock_device.nodes.timer.mode = "countdown"
+    mock_device.nodes.timer.initial = 3600
+    mock_device.nodes.timer.current = 1800
+    mock_device.cook = CookData.model_validate(
+        {
+            "cookId": "cook-123",
+            "originSource": "app",
+            "type": "manual",
+            "rackPosition": 3,
+            "stages": [
+                {
+                    "id": "stage-1",
+                    "stepType": "cook",
+                    "title": "Roast",
+                    "description": "Roast the chicken",
+                    "rackPosition": 3,
+                },
+                {
+                    "id": "stage-2",
+                    "stepType": "cook",
+                    "title": "Rest",
+                    "description": "Let it rest",
+                    "rackPosition": 3,
+                },
+            ],
+        }
+    )
+    # Mirrors what AnovaOven.start_cook() records via register_cook_plan(),
+    # so current_stage_index/total_stage_count resolve to real values.
+    mock_device.register_cook_plan("cook-123", ["stage-1", "stage-2"])
     return mock_device
 
 
 @pytest.fixture
-def mock_probe_device(mock_device) -> MagicMock:
-    """Return a mock device with probe connected."""
-    mock_device.state.nodes["probe"] = {
-        "connected": True,
-        "current": {"celsius": 65.0, "fahrenheit": 149.0},
-        "setpoint": {"celsius": 70.0, "fahrenheit": 158.0},
-    }
+def mock_probe_device(mock_device: Device) -> Device:
+    """Return a real Device instance with a connected temperature probe."""
+    mock_device.nodes.temperature_probe = ProbeState.model_validate(
+        {
+            "connected": True,
+            "current": {"celsius": 65.0, "fahrenheit": 149.0},
+            "setpoint": {"celsius": 70.0, "fahrenheit": 158.0},
+        }
+    )
     return mock_device
 
 
@@ -158,7 +177,10 @@ def mock_probe_device(mock_device) -> MagicMock:
 def mock_anova_oven() -> AsyncMock:
     """Return a mock AnovaOven instance (NOT patched - tests do their own patching).
 
-    ✅ FIXED: Returns AsyncMock directly, tests handle patching themselves.
+    ``discover_devices`` populates ``_devices`` from its own ``return_value``
+    so ``coordinator._async_update_data`` (which returns
+    ``self.anova_oven._devices``) yields a real dict keyed by cooker_id,
+    matching how tests configure ``mock_anova_oven.discover_devices.return_value``.
     """
     mock_oven = AsyncMock()
 
@@ -166,10 +188,17 @@ def mock_anova_oven() -> AsyncMock:
     mock_oven.__aenter__ = AsyncMock(return_value=mock_oven)
     mock_oven.__aexit__ = AsyncMock(return_value=None)
 
+    async def _discover_devices_side_effect():
+        devices = mock_oven.discover_devices.return_value
+        mock_oven._devices = {device.cooker_id: device for device in devices}
+        return devices
+
     # Setup methods
     mock_oven.connect = AsyncMock()
     mock_oven.disconnect = AsyncMock()
-    mock_oven.discover_devices = AsyncMock(return_value=[])
+    mock_oven.discover_devices = AsyncMock(side_effect=_discover_devices_side_effect)
+    mock_oven.discover_devices.return_value = []
+    mock_oven._devices = {}
     mock_oven.start_cook = AsyncMock()
     mock_oven.stop_cook = AsyncMock()
     mock_oven.set_probe = AsyncMock()
@@ -178,6 +207,7 @@ def mock_anova_oven() -> AsyncMock:
     # Mock client
     mock_oven.client = MagicMock()
     mock_oven.client.ws_url = DEFAULT_WS_URL
+    mock_oven.client.is_connected = False
 
     return mock_oven
 
@@ -239,7 +269,7 @@ async def setup_integration_with_device(
     hass: HomeAssistant,
     mock_config_entry: MockConfigEntry,
     mock_anova_oven: AsyncMock,
-    mock_device: MagicMock,
+    mock_device: Device,
 ) -> AsyncMock:
     """Setup integration with a single device."""
     mock_config_entry.add_to_hass(hass)
