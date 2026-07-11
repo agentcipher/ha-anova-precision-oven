@@ -104,6 +104,16 @@ def _make_device(**overrides) -> Device:
         "state": DeviceState.IDLE.value,
         "nodes": _default_nodes_payload(),
         "state_info": {"mode": "idle", "temperatureUnit": "C"},
+        "system_info": {
+            "online": True,
+            "hardwareVersion": "120V1",
+            "powerMains": 120,
+            "powerHertz": 60,
+            "firmwareVersion": "2.1.0",
+            "uiHardwareVersion": "UI_ORIGINAL_2",
+            "uiFirmwareVersion": "0.0.0",
+            "triacsFailed": False,
+        },
         "cook": None,
     }
     payload.update(overrides)

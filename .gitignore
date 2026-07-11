@@ -53,6 +53,13 @@ htmlcov/
 *~
 .DS_Store
 
+# Claude Code local settings
+.claude/
+
+# Home Assistant runtime state (only appears if a HA config_dir is
+# accidentally pointed at the repo root, e.g. during local sandbox testing)
+.storage/
+
 # Virtual environments
 venv/
 env/

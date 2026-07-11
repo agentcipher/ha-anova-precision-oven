@@ -7,7 +7,7 @@ from homeassistant.exceptions import ConfigEntryNotReady
 from homeassistant.helpers.update_coordinator import UpdateFailed
 
 from custom_components.anova_oven.coordinator import AnovaOvenCoordinator
-from custom_components.anova_oven.anova_sdk.exceptions import AnovaError
+from anova_oven_sdk.exceptions import AnovaError
 
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
@@ -348,6 +348,117 @@ async def test_coordinator_start_recipe_not_found(
             await coordinator.async_start_recipe("test-device-123", "nonexistent")
 
 
+async def test_coordinator_start_recipe_tracks_cook_id(
+    hass: HomeAssistant,
+    mock_config_entry: MockConfigEntry,
+    mock_anova_oven: AsyncMock,
+    mock_device,
+    mock_recipe_library,
+):
+    """start_recipe should record the cook_id returned by start_cook()."""
+    mock_anova_oven.discover_devices.return_value = [mock_device]
+    mock_anova_oven.start_cook.return_value = "cook-abc"
+
+    mock_config_entry.add_to_hass(hass)
+
+    recipe_mock = mock_recipe_library.recipes["roast_chicken"]
+    recipe_mock.validate_for_oven = MagicMock()
+    recipe_mock.to_cook_stages = MagicMock(return_value=[])
+
+    with patch(
+        "custom_components.anova_oven.coordinator.AnovaOven",
+        return_value=mock_anova_oven,
+    ), patch(
+        "custom_components.anova_oven.coordinator.RecipeLibrary.from_yaml_file",
+        return_value=mock_recipe_library,
+    ):
+        coordinator = AnovaOvenCoordinator(hass, mock_config_entry)
+        await coordinator.async_refresh()
+
+        with patch.object(coordinator, 'async_request_refresh', new_callable=AsyncMock):
+            await coordinator.async_start_recipe("test-device-123", "roast_chicken")
+
+    assert coordinator._active_recipes["test-device-123"] == ("cook-abc", "roast_chicken")
+
+
+async def test_get_active_recipe_id_clears_on_cook_id_mismatch(
+    hass: HomeAssistant,
+    mock_config_entry: MockConfigEntry,
+    mock_anova_oven: AsyncMock,
+    mock_cooking_device,
+):
+    """get_active_recipe_id() should return None once the oven's cook_id
+    diverges from the one we started (e.g. a different cook was started
+    from the Anova app), rather than assuming any active cook is ours."""
+    mock_anova_oven.discover_devices.return_value = [mock_cooking_device]
+
+    mock_config_entry.add_to_hass(hass)
+
+    with patch(
+        "custom_components.anova_oven.coordinator.AnovaOven",
+        return_value=mock_anova_oven,
+    ):
+        coordinator = AnovaOvenCoordinator(hass, mock_config_entry)
+        await coordinator.async_refresh()
+
+        # We tracked a different cook_id than the one actually active on
+        # the device (mock_cooking_device.cook.cook_id == "cook-123").
+        coordinator._active_recipes["test-device-123"] = ("some-other-cook-id", "roast_chicken")
+
+        assert coordinator.get_active_recipe_id("test-device-123") is None
+        assert "test-device-123" not in coordinator._active_recipes
+
+
+async def test_get_active_recipe_id_matches_cook_id(
+    hass: HomeAssistant,
+    mock_config_entry: MockConfigEntry,
+    mock_anova_oven: AsyncMock,
+    mock_cooking_device,
+):
+    """get_active_recipe_id() should keep returning the recipe while the
+    oven's cook_id still matches what we started."""
+    mock_anova_oven.discover_devices.return_value = [mock_cooking_device]
+
+    mock_config_entry.add_to_hass(hass)
+
+    with patch(
+        "custom_components.anova_oven.coordinator.AnovaOven",
+        return_value=mock_anova_oven,
+    ):
+        coordinator = AnovaOvenCoordinator(hass, mock_config_entry)
+        await coordinator.async_refresh()
+
+        coordinator._active_recipes["test-device-123"] = ("cook-123", "roast_chicken")
+
+        assert coordinator.get_active_recipe_id("test-device-123") == "roast_chicken"
+
+
+async def test_get_active_recipe_id_adopts_unconfirmed_cook_id(
+    hass: HomeAssistant,
+    mock_config_entry: MockConfigEntry,
+    mock_anova_oven: AsyncMock,
+    mock_cooking_device,
+):
+    """A tracked cook_id of None (restored from a previous HA session, see
+    select.py's async_added_to_hass) should be adopted from the oven's
+    first real cook_id rather than treated as a mismatch."""
+    mock_anova_oven.discover_devices.return_value = [mock_cooking_device]
+
+    mock_config_entry.add_to_hass(hass)
+
+    with patch(
+        "custom_components.anova_oven.coordinator.AnovaOven",
+        return_value=mock_anova_oven,
+    ):
+        coordinator = AnovaOvenCoordinator(hass, mock_config_entry)
+        await coordinator.async_refresh()
+
+        coordinator._active_recipes["test-device-123"] = (None, "roast_chicken")
+
+        assert coordinator.get_active_recipe_id("test-device-123") == "roast_chicken"
+        assert coordinator._active_recipes["test-device-123"] == ("cook-123", "roast_chicken")
+
+
 async def test_coordinator_get_recipe_info(
     hass: HomeAssistant,
     mock_config_entry: MockConfigEntry,
@@ -406,19 +517,23 @@ async def test_coordinator_shutdown(
     mock_anova_oven.disconnect.assert_called_once()
 
 
-async def test_coordinator_custom_ws_url(
+async def test_coordinator_configures_settings_with_token_only(
     hass: HomeAssistant,
     mock_anova_oven: AsyncMock,
     mock_device,
 ):
-    """Test coordinator with custom WebSocket URL."""
-    from custom_components.anova_oven.const import CONF_WS_URL
+    """Test the coordinator only configures the SDK with the API token.
 
+    ws_url/environment are not currently exposed anywhere in this
+    integration's config flow, so extra keys in config entry data (even
+    if present) have no effect - this documents that real, current
+    behavior rather than a hypothetical customization feature.
+    """
     custom_config = MockConfigEntry(
         domain="anova_oven",
         data={
             "token": "anova-test",
-            CONF_WS_URL: "wss://custom.anovaculinary.io",
+            "some_unrelated_key": "wss://custom.anovaculinary.io",
         },
     )
 
@@ -430,11 +545,13 @@ async def test_coordinator_custom_ws_url(
     with patch(
         "custom_components.anova_oven.coordinator.AnovaOven",
         return_value=mock_anova_oven,
-    ):
+    ), patch(
+        "custom_components.anova_oven.coordinator.settings",
+    ) as mock_settings:
         coordinator = AnovaOvenCoordinator(hass, custom_config)
         await coordinator.async_refresh()
 
-    assert mock_anova_oven.client.ws_url == "wss://custom.anovaculinary.io"
+    mock_settings.configure.assert_called_once_with(TOKEN="anova-test")
 
 
 
@@ -952,7 +1069,7 @@ async def test_coordinator_async_setup_already_complete(
         mock_config_entry,
         mock_anova_oven: AsyncMock,
 ):
-    """Test _async_setup returns early when already complete (line 50)."""
+    """Test _async_update_data only performs initial setup (connect) once."""
     from custom_components.anova_oven.coordinator import AnovaOvenCoordinator
 
     mock_config_entry.add_to_hass(hass)
@@ -963,12 +1080,17 @@ async def test_coordinator_async_setup_already_complete(
     ):
         coordinator = AnovaOvenCoordinator(hass, mock_config_entry)
 
-        # First setup
-        await coordinator._async_setup()
-        assert coordinator._setup_complete is True
+        # First update performs initial setup (client starts disconnected)
+        await coordinator._async_update_data()
+        assert coordinator._initial_setup_done is True
+        assert mock_anova_oven.connect.call_count == 1
 
-        # Call again - should return early at line 50
-        await coordinator._async_setup()
+        # Simulate a still-healthy connection so the second call's health
+        # check doesn't try to reconnect
+        mock_anova_oven.client.is_connected = True
+
+        # Call again - initial setup should not repeat since it's already done
+        await coordinator._async_update_data()
 
         # Verify connect was only called once (first setup)
         assert mock_anova_oven.connect.call_count == 1

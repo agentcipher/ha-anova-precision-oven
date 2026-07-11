@@ -2,7 +2,9 @@
 from unittest.mock import AsyncMock, patch, MagicMock
 
 from homeassistant.const import ATTR_ENTITY_ID, ATTR_OPTION
-from homeassistant.core import HomeAssistant
+from homeassistant.core import HomeAssistant, State
+
+from pytest_homeassistant_custom_component.common import mock_restore_cache
 
 from custom_components.anova_oven.const import DOMAIN
 
@@ -88,6 +90,9 @@ async def test_recipe_select_current_cooking(
     """Test recipe select shows current recipe when cooking."""
     mock_config_entry.add_to_hass(hass)
     mock_anova_oven.discover_devices.return_value = [mock_cooking_device]
+    # Must match mock_cooking_device.cook.cook_id so get_active_recipe_id()
+    # recognizes the started cook as the one now reported by the device.
+    mock_anova_oven.start_cook.return_value = mock_cooking_device.cook.cook_id
 
     with patch(
         "custom_components.anova_oven.coordinator.AnovaOven",
@@ -105,6 +110,74 @@ async def test_recipe_select_current_cooking(
 
     state = hass.states.get("select.test_oven_recipe")
     assert state.state == "roast_chicken"
+
+
+async def test_recipe_select_restores_state_while_cooking(
+    hass: HomeAssistant,
+    mock_config_entry,
+    mock_anova_oven: AsyncMock,
+    mock_cooking_device,
+    mock_recipe_library,
+):
+    """A restored recipe selection should reappear (and get confirmed
+    against the oven's real cook_id) if a cook is still genuinely active
+    across a HA restart/reload, instead of flashing back to "None"."""
+    mock_config_entry.add_to_hass(hass)
+    mock_anova_oven.discover_devices.return_value = [mock_cooking_device]
+
+    mock_restore_cache(
+        hass,
+        [State("select.test_oven_recipe", "roast_chicken")],
+    )
+
+    with patch(
+        "custom_components.anova_oven.coordinator.AnovaOven",
+        return_value=mock_anova_oven,
+    ), patch(
+        "custom_components.anova_oven.coordinator.RecipeLibrary.from_yaml_file",
+        return_value=mock_recipe_library,
+    ):
+        await hass.config_entries.async_setup(mock_config_entry.entry_id)
+        await hass.async_block_till_done()
+
+    state = hass.states.get("select.test_oven_recipe")
+    assert state.state == "roast_chicken"
+
+    coordinator = hass.data[DOMAIN][mock_config_entry.entry_id]
+    # The restored (cook_id=None, recipe_id) entry should have been
+    # confirmed/adopted against the device's real cook_id by now.
+    assert coordinator._active_recipes["test-device-123"] == ("cook-123", "roast_chicken")
+
+
+async def test_recipe_select_restore_ignored_when_not_cooking(
+    hass: HomeAssistant,
+    mock_config_entry,
+    mock_anova_oven: AsyncMock,
+    mock_device,
+    mock_recipe_library,
+):
+    """A restored recipe selection should be dropped if the device isn't
+    actually cooking - it shouldn't get stuck showing a stale recipe."""
+    mock_config_entry.add_to_hass(hass)
+    mock_anova_oven.discover_devices.return_value = [mock_device]
+
+    mock_restore_cache(
+        hass,
+        [State("select.test_oven_recipe", "roast_chicken")],
+    )
+
+    with patch(
+        "custom_components.anova_oven.coordinator.AnovaOven",
+        return_value=mock_anova_oven,
+    ), patch(
+        "custom_components.anova_oven.coordinator.RecipeLibrary.from_yaml_file",
+        return_value=mock_recipe_library,
+    ):
+        await hass.config_entries.async_setup(mock_config_entry.entry_id)
+        await hass.async_block_till_done()
+
+    state = hass.states.get("select.test_oven_recipe")
+    assert state.state == "None"
 
 
 async def test_recipe_select_start_recipe(
@@ -196,6 +269,9 @@ async def test_recipe_select_extra_attributes(
 
     mock_config_entry.add_to_hass(hass)
     mock_anova_oven.discover_devices.return_value = [mock_cooking_device]
+    # Must match mock_cooking_device.cook.cook_id so get_active_recipe_id()
+    # recognizes the started cook as the one now reported by the device.
+    mock_anova_oven.start_cook.return_value = mock_cooking_device.cook.cook_id
 
     with patch(
         "custom_components.anova_oven.coordinator.AnovaOven",

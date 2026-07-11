@@ -234,6 +234,9 @@ async def test_climate_extra_attributes_cooking(
     """Test extra attributes when cooking."""
     mock_config_entry.add_to_hass(hass)
     mock_anova_oven.discover_devices.return_value = [mock_cooking_device]
+    # Must match mock_cooking_device.cook.cook_id so get_active_recipe_id()
+    # recognizes the started cook as the one now reported by the device.
+    mock_anova_oven.start_cook.return_value = mock_cooking_device.cook.cook_id
 
     with patch(
         "custom_components.anova_oven.coordinator.AnovaOven",

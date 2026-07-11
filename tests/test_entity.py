@@ -4,8 +4,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 from homeassistant.core import HomeAssistant
 
 from custom_components.anova_oven.const import DOMAIN
-from custom_components.anova_oven.anova_sdk.models import OvenVersion
-from custom_components.anova_oven.anova_sdk.exceptions import AnovaError
+from anova_oven_sdk.models import OvenVersion
+from anova_oven_sdk.exceptions import AnovaError
 
 
 async def test_entity_device_info(

@@ -148,7 +148,7 @@ class AnovaOvenClimate(AnovaOvenEntity, ClimateEntity):
                 elif steam.mode == "relative-humidity" and steam.relative_humidity:
                     attrs["steam_percentage"] = steam.relative_humidity.current
 
-            if device.nodes.timer and device.nodes.timer.mode != "idle":
+            if device.nodes.timer:
                 attrs["timer_mode"] = device.nodes.timer.mode
                 attrs["timer_initial"] = device.nodes.timer.initial
                 attrs["timer_current"] = device.nodes.timer.current

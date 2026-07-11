@@ -6,5 +6,5 @@
 [dependency-groups]
 test = [
     "pytest-homeassistant-custom-component",
-    "anova-precision-oven-sdk==2026.06.2",
+    "anova-precision-oven-sdk==2026.07.2",
 ]

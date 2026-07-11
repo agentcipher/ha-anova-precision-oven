@@ -8,6 +8,7 @@ from homeassistant.components.select import SelectEntity
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
+from homeassistant.helpers.restore_state import RestoreEntity
 
 from .const import DOMAIN
 from .coordinator import AnovaOvenCoordinator
@@ -32,7 +33,7 @@ async def async_setup_entry(
     async_add_entities(entities)
 
 
-class AnovaOvenRecipeSelect(AnovaOvenEntity, SelectEntity):
+class AnovaOvenRecipeSelect(AnovaOvenEntity, SelectEntity, RestoreEntity):
     """Select entity for choosing recipes."""
 
     _attr_icon = "mdi:book-open-variant"
@@ -42,6 +43,28 @@ class AnovaOvenRecipeSelect(AnovaOvenEntity, SelectEntity):
         super().__init__(coordinator, device_id, "recipe_select")
         self._attr_name = "Recipe"
         self._attr_options = self._get_recipe_options()
+
+    async def async_added_to_hass(self) -> None:
+        """Restore the last known recipe selection, if any.
+
+        This is a best-effort restore: it seeds coordinator state so the
+        UI doesn't flash back to "None" on reload while a cook is still
+        genuinely in progress, but does not claim to know the real
+        cook_id, so get_active_recipe_id() will confirm/adopt it against
+        device.cook.cook_id as soon as the next state update arrives.
+        """
+        await super().async_added_to_hass()
+        last_state = await self.async_get_last_state()
+        if (
+            last_state
+            and last_state.state in self._attr_options
+            and last_state.state != "None"
+            and self._device_id not in self.coordinator._active_recipes
+        ):
+            self.coordinator._active_recipes[self._device_id] = (
+                None,
+                last_state.state,
+            )
 
     def _get_recipe_options(self) -> list[str]:
         """Get available recipe options."""

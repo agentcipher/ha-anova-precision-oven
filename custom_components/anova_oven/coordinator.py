@@ -42,7 +42,12 @@ class AnovaOvenCoordinator(DataUpdateCoordinator[dict[str, Device]]):
         )
         self.entry = entry
         self._initial_setup_done = False
-        self._active_recipes: dict[str, str] = {}
+        # Maps device_id -> (cook_id, recipe_id). Storing cook_id alongside
+        # the recipe name lets us detect when the oven's actual active cook
+        # session no longer matches what we last started (e.g. it finished
+        # and a different cook was started from the Anova app directly),
+        # rather than assuming any truthy device.cook still means "ours".
+        self._active_recipes: dict[str, tuple[str | None, str]] = {}
 
         # Try to find the token in various keys
         self.api_token = entry.data.get(CONF_API_TOKEN)
@@ -62,21 +67,12 @@ class AnovaOvenCoordinator(DataUpdateCoordinator[dict[str, Device]]):
 
         self.anova_oven = AnovaOven()
 
-        # The SDK configures its own logger ("anova_oven", via
-        # setup_logging()) rather than this integration's logger hierarchy,
-        # so HA's `logger:` config for custom_components.anova_oven has no
-        # effect on it. setup_logging() also attaches its own stdout
-        # handler with its own formatting, which duplicates every record
-        # HA's root logger already prints via propagation - drop it so HA's
-        # logger config is the single source of truth for level and output.
-        sdk_logger = logging.getLogger("anova_oven")
-        sdk_logger.handlers.clear()
-
-        # Mirror our debug level onto it so enabling debug logging for this
-        # integration also surfaces the SDK's own diagnostic logging (e.g.
-        # cook-session stage details).
-        if _LOGGER.isEnabledFor(logging.DEBUG):
-            sdk_logger.setLevel(logging.DEBUG)
+        # As of SDK 2026.07.1+, the SDK follows the standard library-logging
+        # convention (logging.getLogger(__name__) + no self-configured
+        # level/handlers), rooted at the "anova_oven_sdk" logger name. It
+        # naturally respects whatever this integration's own `logger:`
+        # config sets for "anova_oven_sdk" - no manual mirroring or handler
+        # cleanup needed here.
 
         # Add callback to trigger coordinator updates when SDK receives state updates
         self.anova_oven.client.add_callback(self._handle_state_update_callback)
@@ -163,6 +159,8 @@ class AnovaOvenCoordinator(DataUpdateCoordinator[dict[str, Device]]):
 
     def get_device(self, device_id: str) -> Device | None:
         """Get device by ID."""
+        if not self.data:
+            return None
         return self.data.get(device_id)
 
     def get_available_recipes(self) -> list[str]:
@@ -178,6 +176,7 @@ class AnovaOvenCoordinator(DataUpdateCoordinator[dict[str, Device]]):
         try:
             recipe = self.recipe_library.get_recipe(recipe_id)
             return {
+                "id": recipe_id,
                 "name": recipe.name,
                 "description": recipe.description,
                 "stages": len(recipe.stages),
@@ -189,57 +188,90 @@ class AnovaOvenCoordinator(DataUpdateCoordinator[dict[str, Device]]):
     async def async_start_recipe(self, device_id: str, recipe_id: str) -> None:
         """Start cooking with a recipe."""
         if not self.recipe_library:
-            raise ValueError("No recipe library loaded")
+            raise UpdateFailed("Recipe library not loaded")
 
-        recipe = self.recipe_library.get_recipe(recipe_id)
         device = self.get_device(device_id)
-
         if not device:
-            raise ValueError(f"Device {device_id} not found")
+            raise UpdateFailed(f"Device {device_id} not found")
 
-        # Validate recipe for oven version
-        recipe.validate_for_oven(device.oven_version)
+        try:
+            recipe = self.recipe_library.get_recipe(recipe_id)
+            recipe.validate_for_oven(device.oven_version)
+            stages = recipe.to_cook_stages()
+        except ValueError as err:
+            raise UpdateFailed(f"Recipe validation failed: {err}") from err
 
-        # Convert recipe to cook stages
-        stages = recipe.to_cook_stages()
+        try:
+            cook_id = await self.anova_oven.start_cook(device_id, stages=stages)
+        except AnovaError as err:
+            raise UpdateFailed(f"Failed to start recipe: {err}") from err
 
-        # Start cook with stages
-        await self.anova_oven.start_cook(device_id, stages=stages)
-        self._active_recipes[device_id] = recipe_id
+        self._active_recipes[device_id] = (cook_id, recipe_id)
         await self.async_request_refresh()
 
     async def async_start_cook(self, device_id: str, **kwargs) -> None:
         """Start cooking."""
         self._active_recipes.pop(device_id, None)
-        await self.anova_oven.start_cook(device_id, **kwargs)
+        try:
+            await self.anova_oven.start_cook(device_id=device_id, **kwargs)
+        except AnovaError as err:
+            raise UpdateFailed(f"Failed to start cook: {err}") from err
         await self.async_request_refresh()
 
     async def async_stop_cook(self, device_id: str) -> None:
         """Stop cooking."""
         self._active_recipes.pop(device_id, None)
-        await self.anova_oven.stop_cook(device_id)
+        try:
+            await self.anova_oven.stop_cook(device_id)
+        except AnovaError as err:
+            raise UpdateFailed(f"Failed to stop cook: {err}") from err
         await self.async_request_refresh()
 
     def get_active_recipe_id(self, device_id: str) -> str | None:
         """Get the recipe ID currently cooking on a device, if any.
 
-        Lazily clears the tracked recipe once the device's cook session
-        has ended (e.g. it finished naturally without async_stop_cook).
+        Lazily clears (or ignores) the tracked recipe once the device's
+        cook session has ended, OR once the oven reports a different
+        cook_id than the one we started - e.g. it finished naturally, or
+        a new cook was started from the Anova app directly rather than
+        through this integration.
+
+        A tracked cook_id of None means "unconfirmed" (restored from a
+        previous HA session without knowing the real cook_id - see
+        select.py's async_added_to_hass). In that case, adopt whatever
+        cook_id the oven currently reports rather than treating it as a
+        mismatch, so the restored selection survives its first refresh.
         """
         device = self.get_device(device_id)
         if not device or not device.cook:
             self._active_recipes.pop(device_id, None)
             return None
-        return self._active_recipes.get(device_id)
+        tracked = self._active_recipes.get(device_id)
+        if not tracked:
+            return None
+        tracked_cook_id, recipe_id = tracked
+        if tracked_cook_id is None:
+            self._active_recipes[device_id] = (device.cook.cook_id, recipe_id)
+            return recipe_id
+        if tracked_cook_id != device.cook.cook_id:
+            self._active_recipes.pop(device_id, None)
+            return None
+        return recipe_id
 
     async def async_set_probe(self, device_id: str, target: float, temperature_unit: str = "C") -> None:
         """Set probe temperature."""
-        await self.anova_oven.set_probe(device_id, target, temperature_unit)
+        try:
+            await self.anova_oven.set_probe(device_id, target, temperature_unit)
+        except AnovaError as err:
+            raise UpdateFailed(f"Failed to set probe: {err}") from err
         await self.async_request_refresh()
 
     async def async_set_temperature_unit(self, device_id: str, unit: str) -> None:
         """Set temperature unit."""
-        await self.anova_oven.set_temperature_unit(device_id, unit)
+        try:
+            await self.anova_oven.set_temperature_unit(device_id, unit)
+        except AnovaError as err:
+            raise UpdateFailed(f"Failed to set temperature unit: {err}") from err
         await self.async_request_refresh()
 
     async def async_shutdown(self) -> None:

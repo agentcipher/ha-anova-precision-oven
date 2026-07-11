@@ -6,6 +6,8 @@ from homeassistant.components.switch import DOMAIN as SWITCH_DOMAIN
 from homeassistant.const import ATTR_ENTITY_ID, STATE_ON, STATE_OFF
 from homeassistant.core import HomeAssistant
 
+from anova_oven_sdk.models import DeviceState
+
 
 async def test_switch_setup(
     hass: HomeAssistant,
@@ -78,7 +80,7 @@ async def test_switch_is_on_preheating(
     mock_device,
 ):
     """Test switch is on when oven is preheating."""
-    mock_device.state.state = "preheating"
+    mock_device.state = DeviceState.PREHEATING
     mock_config_entry.add_to_hass(hass)
     mock_anova_oven.discover_devices.return_value = [mock_device]
 
@@ -131,7 +133,7 @@ async def test_switch_turn_on_with_custom_temp(
     mock_device,
 ):
     """Test turning on the switch uses device's setpoint."""
-    mock_device.state.nodes["temperatureBulbs"]["dry"]["setpoint"]["celsius"] = 200.0
+    mock_device.nodes.temperature_bulbs.dry.setpoint["celsius"] = 200.0
     mock_config_entry.add_to_hass(hass)
     mock_anova_oven.discover_devices.return_value = [mock_device]
 
@@ -187,7 +189,7 @@ async def test_switch_turn_on_error(
     mock_device,
 ):
     """Test switch handles turn on errors."""
-    from custom_components.anova_oven.anova_sdk.exceptions import AnovaError
+    from anova_oven_sdk.exceptions import AnovaError
 
     mock_config_entry.add_to_hass(hass)
     mock_anova_oven.discover_devices.return_value = [mock_device]
@@ -216,7 +218,7 @@ async def test_switch_turn_off_error(
     mock_cooking_device,
 ):
     """Test switch handles turn off errors."""
-    from custom_components.anova_oven.anova_sdk.exceptions import AnovaError
+    from anova_oven_sdk.exceptions import AnovaError
 
     mock_config_entry.add_to_hass(hass)
     mock_anova_oven.discover_devices.return_value = [mock_cooking_device]

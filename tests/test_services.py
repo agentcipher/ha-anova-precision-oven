@@ -324,7 +324,7 @@ async def test_service_error_handling(
 ):
     """Test service error handling."""
     from custom_components.anova_oven.services import async_setup_services
-    from custom_components.anova_oven.anova_sdk.exceptions import AnovaError
+    from anova_oven_sdk.exceptions import AnovaError
 
     mock_config_entry.add_to_hass(hass)
     mock_anova_oven.discover_devices.return_value = [mock_device]

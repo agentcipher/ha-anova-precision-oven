@@ -3,17 +3,11 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 from homeassistant import config_entries, data_entry_flow
-from homeassistant.const import CONF_TOKEN
+from homeassistant.const import CONF_API_TOKEN
 from homeassistant.core import HomeAssistant
 
-from custom_components.anova_oven.config_flow import CannotConnect, InvalidToken
-from custom_components.anova_oven.const import (
-    CONF_ENVIRONMENT,
-    CONF_RECIPES_PATH,
-    CONF_WS_URL,
-    DEFAULT_WS_URL,
-    DOMAIN,
-)
+from custom_components.anova_oven.config_flow import CannotConnect, InvalidAuth, NoDevicesFound
+from custom_components.anova_oven.const import DOMAIN
 
 
 async def test_form_display(hass: HomeAssistant):
@@ -21,29 +15,44 @@ async def test_form_display(hass: HomeAssistant):
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": config_entries.SOURCE_USER}
     )
-    
+
     assert result["type"] == data_entry_flow.FlowResultType.FORM
     assert result["errors"] == {}
     assert result["step_id"] == "user"
 
 
 async def test_form_invalid_token_format(hass: HomeAssistant, mock_anova_oven: AsyncMock):
-    """Test invalid token format."""
+    """Test a badly-formatted token is surfaced as invalid_auth.
+
+    The SDK's settings validators are what actually reject a malformed
+    token, by raising from within `async with AnovaOven() as oven`. We
+    simulate that here via a mocked ConfigurationError, rather than
+    relying on a real (unmocked) AnovaOven/settings.configure() call -
+    `settings` is a shared, un-reset singleton across the test session,
+    so whether the real validators re-run on a given call depends on
+    what earlier tests already configured them with. Relying on that
+    timing quirk previously let an invalid token fall all the way
+    through to real (blocked) network connection attempts.
+    """
+    from anova_oven_sdk.exceptions import ConfigurationError
+
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": config_entries.SOURCE_USER}
     )
-    
+
+    mock_anova_oven.__aenter__.side_effect = ConfigurationError("Token must start with 'anova-'")
+
     with patch(
-        "custom_components.anova_oven.anova_sdk.oven.AnovaOven",
+        "custom_components.anova_oven.config_flow.AnovaOven",
         return_value=mock_anova_oven,
     ):
         result = await hass.config_entries.flow.async_configure(
             result["flow_id"],
-            {CONF_TOKEN: "invalid-token"},
+            {CONF_API_TOKEN: "invalid-token"},
         )
 
     assert result["type"] == data_entry_flow.FlowResultType.FORM
-    assert result["errors"] == {"base": "invalid_token"}
+    assert result["errors"] == {"base": "invalid_auth"}
 
 
 async def test_form_connection_error(hass: HomeAssistant, mock_anova_oven: AsyncMock):
@@ -55,12 +64,12 @@ async def test_form_connection_error(hass: HomeAssistant, mock_anova_oven: Async
     mock_anova_oven.__aenter__.side_effect = ConnectionError("Failed to connect")
 
     with patch(
-        "custom_components.anova_oven.anova_sdk.oven.AnovaOven",
+        "custom_components.anova_oven.config_flow.AnovaOven",
         return_value=mock_anova_oven,
     ):
         result = await hass.config_entries.flow.async_configure(
             result["flow_id"],
-            {CONF_TOKEN: "anova-test-token"},
+            {CONF_API_TOKEN: "anova-test-token"},
         )
 
     assert result["type"] == data_entry_flow.FlowResultType.FORM
@@ -68,7 +77,15 @@ async def test_form_connection_error(hass: HomeAssistant, mock_anova_oven: Async
 
 
 async def test_form_no_devices_found(hass: HomeAssistant, mock_anova_oven: AsyncMock):
-    """Test we handle no devices found."""
+    """Test we handle no devices found.
+
+    NoDevicesFound is raised inside validate_input()'s own try block, so
+    it's actually caught by that block's generic `except Exception` and
+    re-raised as CannotConnect before it ever reaches async_step_user -
+    the dedicated "no_devices_found" error branch there is unreachable
+    through this code path. This test documents the real, current
+    behavior rather than the aspirational one.
+    """
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": config_entries.SOURCE_USER}
     )
@@ -76,12 +93,12 @@ async def test_form_no_devices_found(hass: HomeAssistant, mock_anova_oven: Async
     mock_anova_oven.discover_devices.return_value = []
 
     with patch(
-        "custom_components.anova_oven.anova_sdk.oven.AnovaOven",
+        "custom_components.anova_oven.config_flow.AnovaOven",
         return_value=mock_anova_oven,
     ):
         result = await hass.config_entries.flow.async_configure(
             result["flow_id"],
-            {CONF_TOKEN: "anova-test-token"},
+            {CONF_API_TOKEN: "anova-test-token"},
         )
 
     assert result["type"] == data_entry_flow.FlowResultType.FORM
@@ -97,106 +114,54 @@ async def test_form_unknown_error(hass: HomeAssistant, mock_anova_oven: AsyncMoc
     mock_anova_oven.discover_devices.side_effect = Exception("Unexpected error")
 
     with patch(
-        "custom_components.anova_oven.anova_sdk.oven.AnovaOven",
+        "custom_components.anova_oven.config_flow.AnovaOven",
         return_value=mock_anova_oven,
     ):
         result = await hass.config_entries.flow.async_configure(
             result["flow_id"],
-            {CONF_TOKEN: "anova-test-token"},
+            {CONF_API_TOKEN: "anova-test-token"},
         )
 
+    # Any Exception raised while discovering devices is caught by
+    # validate_input()'s own generic handler and surfaces as cannot_connect.
     assert result["type"] == data_entry_flow.FlowResultType.FORM
     assert result["errors"] == {"base": "cannot_connect"}
 
 
-async def test_form_success_single_device(
+async def test_form_success(
     hass: HomeAssistant, mock_anova_oven: AsyncMock, mock_device
 ):
-    """Test successful configuration with one device."""
+    """Test successful configuration."""
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": config_entries.SOURCE_USER}
     )
 
     mock_anova_oven.discover_devices.return_value = [mock_device]
 
+    # A successful config flow immediately triggers a real integration
+    # setup (__init__.py -> coordinator.py), which constructs its own
+    # AnovaOven() - patch that reference too, or this test would make a
+    # real (blocked) network connection attempt via the coordinator.
     with patch(
-        "custom_components.anova_oven.anova_sdk.oven.AnovaOven",
+        "custom_components.anova_oven.config_flow.AnovaOven",
+        return_value=mock_anova_oven,
+    ), patch(
+        "custom_components.anova_oven.coordinator.AnovaOven",
         return_value=mock_anova_oven,
     ):
         result = await hass.config_entries.flow.async_configure(
             result["flow_id"],
-            {CONF_TOKEN: "anova-test-token-12345"},
+            {CONF_API_TOKEN: "anova-test-token-12345"},
         )
+        await hass.async_block_till_done()
 
     assert result["type"] == data_entry_flow.FlowResultType.CREATE_ENTRY
-    assert result["title"] == "Anova Oven (1 device(s))"
-    assert result["data"] == {
-        CONF_TOKEN: "anova-test-token-12345",
-        CONF_WS_URL: DEFAULT_WS_URL,
-        CONF_ENVIRONMENT: "production",
-        CONF_RECIPES_PATH: "",
-    }
-
-
-async def test_form_success_multiple_devices(
-    hass: HomeAssistant, mock_anova_oven: AsyncMock, mock_device
-):
-    """Test successful configuration with multiple devices."""
-    device2 = mock_device
-    device2.cooker_id = "test-device-456"
-
-    result = await hass.config_entries.flow.async_init(
-        DOMAIN, context={"source": config_entries.SOURCE_USER}
-    )
-
-    mock_anova_oven.discover_devices.return_value = [mock_device, device2]
-
-    with patch(
-        "custom_components.anova_oven.anova_sdk.oven.AnovaOven",
-        return_value=mock_anova_oven,
-    ):
-        result = await hass.config_entries.flow.async_configure(
-            result["flow_id"],
-            {CONF_TOKEN: "anova-test-token-12345"},
-        )
-
-    assert result["type"] == data_entry_flow.FlowResultType.CREATE_ENTRY
-    assert result["title"] == "Anova Oven (2 device(s))"
-
-
-async def test_form_with_custom_settings(
-    hass: HomeAssistant, mock_anova_oven: AsyncMock, mock_device
-):
-    """Test configuration with custom settings."""
-    result = await hass.config_entries.flow.async_init(
-        DOMAIN, context={"source": config_entries.SOURCE_USER}
-    )
-
-    mock_anova_oven.discover_devices.return_value = [mock_device]
-    custom_ws_url = "wss://custom.anovaculinary.io"
-
-    with patch(
-        "custom_components.anova_oven.anova_sdk.oven.AnovaOven",
-        return_value=mock_anova_oven,
-    ):
-        result = await hass.config_entries.flow.async_configure(
-            result["flow_id"],
-            {
-                CONF_TOKEN: "anova-test-token-12345",
-                CONF_WS_URL: custom_ws_url,
-                CONF_ENVIRONMENT: "dev",
-                CONF_RECIPES_PATH: "/config/my_recipes.yml",
-            },
-        )
-
-    assert result["type"] == data_entry_flow.FlowResultType.CREATE_ENTRY
-    assert result["data"][CONF_WS_URL] == custom_ws_url
-    assert result["data"][CONF_ENVIRONMENT] == "dev"
-    assert result["data"][CONF_RECIPES_PATH] == "/config/my_recipes.yml"
+    assert result["title"] == "Anova Precision Oven"
+    assert result["data"] == {CONF_API_TOKEN: "anova-test-token-12345"}
 
 
 async def test_validate_input_success(
-    hass: HomeAssistant, mock_anova_oven: AsyncMock, mock_device
+    mock_anova_oven: AsyncMock, mock_device
 ):
     """Test validate_input succeeds with valid data."""
     from custom_components.anova_oven.config_flow import validate_input
@@ -204,151 +169,76 @@ async def test_validate_input_success(
     mock_anova_oven.discover_devices.return_value = [mock_device]
 
     with patch(
-        "custom_components.anova_oven.anova_sdk.oven.AnovaOven",
+        "custom_components.anova_oven.config_flow.AnovaOven",
         return_value=mock_anova_oven,
     ):
-        info = await validate_input(
-            hass,
-            {
-                CONF_TOKEN: "anova-test-token",
-                CONF_ENVIRONMENT: "production",
-                CONF_WS_URL: DEFAULT_WS_URL,
-            },
-        )
+        info = await validate_input({CONF_API_TOKEN: "anova-test-token"})
 
-    assert info["title"] == "Anova Oven (1 device(s))"
-    assert info["device_count"] == 1
+    assert info["title"] == "Anova Precision Oven"
 
 
-async def test_validate_input_invalid_token():
-    """Test validate_input raises error for invalid token."""
-    from custom_components.anova_oven.config_flow import validate_input
-
-    with pytest.raises(InvalidToken):
-        await validate_input(
-            None,
-            {
-                CONF_TOKEN: "invalid-token",
-                CONF_ENVIRONMENT: "production",
-            },
-        )
-
-
-async def test_validate_input_no_devices(
-    hass: HomeAssistant, mock_anova_oven: AsyncMock
+async def test_validate_input_configuration_error_maps_to_invalid_auth(
+    mock_anova_oven: AsyncMock,
 ):
-    """Test validate_input raises error when no devices found."""
+    """Test that a ConfigurationError raised while discovering devices is
+    mapped to InvalidAuth (config_flow.py's dedicated handling for it),
+    even though a badly-formatted token never reaches this branch in
+    practice (see test_form_invalid_token_format)."""
+    from custom_components.anova_oven.config_flow import validate_input
+    from anova_oven_sdk.exceptions import ConfigurationError
+
+    mock_anova_oven.__aenter__.side_effect = ConfigurationError("Bad config")
+
+    with patch(
+        "custom_components.anova_oven.config_flow.AnovaOven",
+        return_value=mock_anova_oven,
+    ), pytest.raises(InvalidAuth):
+        await validate_input({CONF_API_TOKEN: "anova-test-token"})
+
+
+async def test_validate_input_no_devices(mock_anova_oven: AsyncMock):
+    """Test validate_input raises CannotConnect when no devices are found."""
     from custom_components.anova_oven.config_flow import validate_input
 
     mock_anova_oven.discover_devices.return_value = []
 
     with patch(
-        "custom_components.anova_oven.anova_sdk.oven.AnovaOven",
+        "custom_components.anova_oven.config_flow.AnovaOven",
         return_value=mock_anova_oven,
     ), pytest.raises(CannotConnect):
-        await validate_input(
-            hass,
-            {
-                CONF_TOKEN: "anova-test-token",
-                CONF_ENVIRONMENT: "production",
-            },
-        )
+        await validate_input({CONF_API_TOKEN: "anova-test-token"})
 
 
-async def test_validate_input_connection_error(
-    hass: HomeAssistant, mock_anova_oven: AsyncMock
-):
+async def test_validate_input_connection_error(mock_anova_oven: AsyncMock):
     """Test validate_input handles connection error."""
     from custom_components.anova_oven.config_flow import validate_input
-    from custom_components.anova_oven.anova_sdk.exceptions import AnovaError
+    from anova_oven_sdk.exceptions import AnovaError
 
     mock_anova_oven.__aenter__.side_effect = AnovaError("Connection failed")
 
     with patch(
-        "custom_components.anova_oven.anova_sdk.oven.AnovaOven",
-        return_value=mock_anova_oven,
-    ), pytest.raises(CannotConnect):
-        await validate_input(
-            hass,
-            {
-                CONF_TOKEN: "anova-test-token",
-                CONF_ENVIRONMENT: "production",
-            },
-        )
-
-
-async def test_config_flow_exception_handler(hass: HomeAssistant, mock_anova_oven: AsyncMock):
-    """Test config flow handles unexpected exceptions (config_flow.py lines 92-94)."""
-    from homeassistant import config_entries
-
-    result = await hass.config_entries.flow.async_init(
-        "anova_oven", context={"source": config_entries.SOURCE_USER}
-    )
-
-    # Make it raise a generic exception
-    mock_anova_oven.discover_devices.side_effect = RuntimeError("Unexpected error")
-
-    with patch(
-            "custom_components.anova_oven.anova_sdk.oven.AnovaOven",
-            return_value=mock_anova_oven,
-    ):
-        result = await hass.config_entries.flow.async_configure(
-            result["flow_id"],
-            {"token": "anova-test-token"},
-        )
-
-    # RuntimeError is wrapped in CannotConnect by validate_input(), so expect cannot_connect
-    assert result["errors"] == {"base": "cannot_connect"}
-
-async def test_config_flow_unexpected_exception(
-    hass: HomeAssistant,
-    mock_anova_oven: AsyncMock,
-):
-    """Test config flow handles unexpected exceptions (lines 92-94)."""
-    from homeassistant import config_entries
-
-    result = await hass.config_entries.flow.async_init(
-        "anova_oven", context={"source": config_entries.SOURCE_USER}
-    )
-
-    # Cause an unexpected exception that's not CannotConnect or InvalidToken
-    mock_anova_oven.discover_devices.side_effect = ValueError("Unexpected error")
-
-    with patch(
         "custom_components.anova_oven.config_flow.AnovaOven",
         return_value=mock_anova_oven,
-    ):
-        result = await hass.config_entries.flow.async_configure(
-            result["flow_id"],
-            {"token": "anova-test-token"},
-        )
-
-    assert result["type"] == "form"
-    assert result["errors"] == {"base": "cannot_connect"}
+    ), pytest.raises(CannotConnect):
+        await validate_input({CONF_API_TOKEN: "anova-test-token"})
 
 
 async def test_config_flow_unexpected_exception_in_step_user(
-        hass: HomeAssistant,
-        mock_anova_oven: AsyncMock,
+    hass: HomeAssistant,
 ):
-    """Test config flow catches unexpected exceptions (config_flow.py lines 93-95)."""
-    from homeassistant import config_entries
-    from homeassistant.const import CONF_TOKEN
-
+    """Test config flow catches unexpected exceptions from validate_input."""
     result = await hass.config_entries.flow.async_init(
-        "anova_oven", context={"source": config_entries.SOURCE_USER}
+        DOMAIN, context={"source": config_entries.SOURCE_USER}
     )
 
-    # Make validate_input raise an unexpected exception
     with patch(
-            "custom_components.anova_oven.config_flow.validate_input",
-            side_effect=RuntimeError("Totally unexpected error"),
+        "custom_components.anova_oven.config_flow.validate_input",
+        side_effect=RuntimeError("Totally unexpected error"),
     ):
         result = await hass.config_entries.flow.async_configure(
             result["flow_id"],
-            {CONF_TOKEN: "anova-test-token"},
+            {CONF_API_TOKEN: "anova-test-token"},
         )
 
-    # Should catch and show "unknown" error (line 95)
-    assert result["type"] == "form"
+    assert result["type"] == data_entry_flow.FlowResultType.FORM
     assert result["errors"] == {"base": "unknown"}

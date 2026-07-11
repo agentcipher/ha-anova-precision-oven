@@ -62,7 +62,7 @@ async def test_button_multiple_devices(
 ):
     """Test buttons created for multiple devices."""
     from unittest.mock import MagicMock
-    from custom_components.anova_oven.anova_sdk.models import OvenVersion
+    from anova_oven_sdk.models import OvenVersion
 
     # Create second device
     device2 = MagicMock()
