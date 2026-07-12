@@ -120,6 +120,11 @@ class AnovaOvenClimate(AnovaOvenEntity, ClimateEntity):
         }
 
         if device.cook:
+            # Captured before get_active_recipe_id(), since that call clears
+            # _active_recipes[device_id] as a side effect when it detects a
+            # cook_id mismatch - reading it after would lose exactly the
+            # value we need for comparison in that case.
+            tracked = self.coordinator._active_recipes.get(self._device_id)
             recipe_id = self.coordinator.get_active_recipe_id(self._device_id)
             attrs[ATTR_RECIPE_NAME] = (
                 self.coordinator.get_recipe_info(recipe_id)["name"]
@@ -127,6 +132,8 @@ class AnovaOvenClimate(AnovaOvenEntity, ClimateEntity):
                 else "Manual Cook"
             )
             attrs["cook_id"] = device.cook.cook_id
+            if tracked:
+                attrs["tracked_cook_id"] = tracked[0]
             if device.total_stage_count is not None:
                 attrs[ATTR_STAGES] = device.total_stage_count
             if device.current_stage_index is not None:

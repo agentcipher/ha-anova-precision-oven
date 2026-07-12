@@ -259,6 +259,46 @@ async def test_climate_extra_attributes_cooking(
     assert state.attributes["recipe_name"] == "Roast Chicken"
     assert state.attributes["stages"] == 2
     assert state.attributes["rack_position"] == 3
+    assert state.attributes["cook_id"] == mock_cooking_device.cook.cook_id
+    assert state.attributes["tracked_cook_id"] == mock_cooking_device.cook.cook_id
+
+
+async def test_climate_extra_attributes_cook_id_mismatch(
+    hass: HomeAssistant,
+    mock_config_entry,
+    mock_anova_oven: AsyncMock,
+    mock_cooking_device,
+    mock_recipe_library,
+):
+    """When the tracked cook_id doesn't match the device's reported
+    cook_id (e.g. a different cook started outside HA), recipe_name
+    should fall back to "Manual Cook" and tracked_cook_id should be
+    absent, while cook_id still reflects the device's real value."""
+    mock_config_entry.add_to_hass(hass)
+    mock_anova_oven.discover_devices.return_value = [mock_cooking_device]
+    # Deliberately does NOT match mock_cooking_device.cook.cook_id.
+    mock_anova_oven.start_cook.return_value = "some-other-cook-id"
+
+    with patch(
+        "custom_components.anova_oven.coordinator.AnovaOven",
+        return_value=mock_anova_oven,
+    ), patch(
+        "custom_components.anova_oven.coordinator.RecipeLibrary.from_yaml_file",
+        return_value=mock_recipe_library,
+    ):
+        assert await hass.config_entries.async_setup(mock_config_entry.entry_id)
+        await hass.async_block_till_done()
+        await hass.async_block_till_done()
+
+        coordinator = hass.data[DOMAIN][mock_config_entry.entry_id]
+        await coordinator.async_start_recipe("test-device-123", "roast_chicken")
+        await hass.async_block_till_done()
+
+    state = hass.states.get("climate.test_oven_oven")
+    assert state is not None, "Climate entity was not created"
+    assert state.attributes["recipe_name"] == "Manual Cook"
+    assert state.attributes["cook_id"] == mock_cooking_device.cook.cook_id
+    assert "tracked_cook_id" not in state.attributes
 
 
 async def test_climate_extra_attributes_steam_percentage_mode(
