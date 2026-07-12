@@ -41,6 +41,11 @@ class AnovaOvenCoordinator(DataUpdateCoordinator[dict[str, Device]]):
             update_interval=timedelta(minutes=5),
         )
         self.entry = entry
+        # Diagnostic only: short marker to tell apart log lines from
+        # different coordinator instances, in case more than one is alive
+        # concurrently (e.g. a stale one from a prior setup attempt still
+        # holding an open WebSocket connection/callback registration).
+        self._instance_id = format(id(self), 'x')[-6:]
         self._initial_setup_done = False
         # Maps device_id -> (cook_id, recipe_id). Storing cook_id alongside
         # the recipe name lets us detect when the oven's actual active cook
@@ -76,15 +81,27 @@ class AnovaOvenCoordinator(DataUpdateCoordinator[dict[str, Device]]):
 
         # Add callback to trigger coordinator updates when SDK receives state updates
         self.anova_oven.client.add_callback(self._handle_state_update_callback)
+        _LOGGER.info(
+            "[%s] Registered callback on client id=%s (callbacks now: %d)",
+            self._instance_id,
+            format(id(self.anova_oven.client), 'x')[-6:],
+            len(self.anova_oven.client._callbacks),
+        )
 
     def _handle_state_update_callback(self, data: dict[str, Any]) -> None:
         """Callback to trigger coordinator update when SDK receives state updates."""
         command = data.get('command')
-        _LOGGER.info("WebSocket callback received command: %s", command)
+        # Payload included in this same call (rather than a separate debug
+        # line) so the confirmation that the callback fired and the actual
+        # data it received are guaranteed to appear together as one atomic
+        # log record, with nothing that could cause one to show without
+        # the other.
+        _LOGGER.info(
+            "[%s] WebSocket callback received command: %s payload=%s",
+            self._instance_id, command, json.dumps(data, default=str),
+        )
 
         if command == 'EVENT_APO_STATE':
-            _LOGGER.debug("Received state update, triggering coordinator refresh")
-            _LOGGER.info("EVENT_APO_STATE raw payload: %s", json.dumps(data, default=str))
             self.async_set_updated_data(self.anova_oven._devices)
         elif command == 'ERROR':
             _LOGGER.error("Received ERROR from Anova API: %s", data)
@@ -106,7 +123,7 @@ class AnovaOvenCoordinator(DataUpdateCoordinator[dict[str, Device]]):
         try:
             # Initial setup on first run
             if not self._initial_setup_done:
-                _LOGGER.info("Performing initial setup (connect, discover, load recipes)")
+                _LOGGER.info("[%s] Performing initial setup (connect, discover, load recipes)", self._instance_id)
 
                 # Connect WebSocket
                 if not self.anova_oven.client.is_connected:
@@ -120,7 +137,7 @@ class AnovaOvenCoordinator(DataUpdateCoordinator[dict[str, Device]]):
                     await self._load_recipes()
 
                 self._initial_setup_done = True
-                _LOGGER.info("Initial setup complete - WebSocket active for real-time updates")
+                _LOGGER.info("[%s] Initial setup complete - WebSocket active for real-time updates", self._instance_id)
             else:
                 # Just verify connection health
                 if not self.anova_oven.client.is_connected:
