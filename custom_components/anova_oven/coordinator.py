@@ -36,9 +36,18 @@ class AnovaOvenCoordinator(DataUpdateCoordinator[dict[str, Device]]):
             _LOGGER,
             config_entry=entry,
             name=DOMAIN,
-            # Very infrequent polling - only for connection health checks
-            # WebSocket provides real-time updates
-            update_interval=timedelta(minutes=5),
+            # WebSocket callbacks are the primary update path and this is
+            # otherwise just a connection health check - but the SDK's
+            # callback dispatch has been observed in the field to silently
+            # stop delivering EVENT_APO_STATE to registered callbacks after
+            # the first exchange, even though the SDK's own internal
+            # handling keeps working and device data keeps getting updated
+            # in place. Polling this often is still cheap: is_connected is
+            # a local check with no network call when already connected,
+            # so this doesn't add load on Anova's API - it's a safety net
+            # against that dispatch issue, not a replacement for the
+            # callback path.
+            update_interval=timedelta(seconds=20),
         )
         self.entry = entry
         # Diagnostic only: short marker to tell apart log lines from
