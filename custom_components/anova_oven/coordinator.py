@@ -1,7 +1,6 @@
 """DataUpdateCoordinator for Anova Precision Oven."""
 from __future__ import annotations
 
-import json
 import logging
 from datetime import timedelta
 from typing import Any, Dict
@@ -36,24 +35,13 @@ class AnovaOvenCoordinator(DataUpdateCoordinator[dict[str, Device]]):
             _LOGGER,
             config_entry=entry,
             name=DOMAIN,
-            # WebSocket callbacks are the primary update path and this is
-            # otherwise just a connection health check - but the SDK's
-            # callback dispatch has been observed in the field to silently
-            # stop delivering EVENT_APO_STATE to registered callbacks after
-            # the first exchange, even though the SDK's own internal
-            # handling keeps working and device data keeps getting updated
-            # in place. Polling this often is still cheap: is_connected is
-            # a local check with no network call when already connected,
-            # so this doesn't add load on Anova's API - it's a safety net
-            # against that dispatch issue, not a replacement for the
-            # callback path.
+            # WebSocket callbacks are the primary update path; this is a
+            # cheap safety-net poll (is_connected is a local check with no
+            # network call when already connected, so this adds no load on
+            # Anova's API) in case a push update is ever missed.
             update_interval=timedelta(seconds=20),
         )
         self.entry = entry
-        # Diagnostic only: short marker to tell apart log lines from
-        # different coordinator instances, in case more than one is alive
-        # concurrently (e.g. a stale one from a prior setup attempt still
-        # holding an open WebSocket connection/callback registration).
         self._instance_id = format(id(self), 'x')[-6:]
         self._initial_setup_done = False
         # Maps device_id -> (cook_id, recipe_id). Storing cook_id alongside
@@ -62,10 +50,6 @@ class AnovaOvenCoordinator(DataUpdateCoordinator[dict[str, Device]]):
         # and a different cook was started from the Anova app directly),
         # rather than assuming any truthy device.cook still means "ours".
         self._active_recipes: dict[str, tuple[str | None, str]] = {}
-        # Diagnostic only: running invocation count per command type, so
-        # we can see the exact sequence/count over time rather than just a
-        # point-in-time "is it still registered" snapshot.
-        self._callback_invocation_counts: dict[str, int] = {}
 
         # Try to find the token in various keys
         self.api_token = entry.data.get(CONF_API_TOKEN)
@@ -94,61 +78,14 @@ class AnovaOvenCoordinator(DataUpdateCoordinator[dict[str, Device]]):
 
         # Add callback to trigger coordinator updates when SDK receives state updates
         self.anova_oven.client.add_callback(self._handle_state_update_callback)
-        _LOGGER.info(
-            "[%s] Registered callback on client id=%s (callbacks now: %d)",
-            self._instance_id,
-            format(id(self.anova_oven.client), 'x')[-6:],
-            len(self.anova_oven.client._callbacks),
-        )
-
-    def _log_callback_registration_status(self) -> None:
-        """Diagnostic only: log whether our callback is still present in
-        the SDK client's callback list, how many HA listeners (entities)
-        are attached to this coordinator, and the running per-command
-        invocation counts. Called from _async_update_data() (the
-        coordinator's existing periodic/on-demand refresh) rather than a
-        separate timer, so it needs no additional cleanup."""
-        callbacks = self.anova_oven.client._callbacks
-        still_registered = self._handle_state_update_callback in callbacks
-        _LOGGER.info(
-            "[%s] Callback check: client id=%s callbacks=%d still_registered=%s "
-            "listeners=%d invocation_counts=%s",
-            self._instance_id,
-            format(id(self.anova_oven.client), 'x')[-6:],
-            len(callbacks),
-            still_registered,
-            len(self._listeners),
-            self._callback_invocation_counts,
-        )
 
     def _handle_state_update_callback(self, data: dict[str, Any]) -> None:
         """Callback to trigger coordinator update when SDK receives state updates."""
         command = data.get('command')
-        self._callback_invocation_counts[command] = (
-            self._callback_invocation_counts.get(command, 0) + 1
-        )
-        # Payload included in this same call (rather than a separate debug
-        # line) so the confirmation that the callback fired and the actual
-        # data it received are guaranteed to appear together as one atomic
-        # log record, with nothing that could cause one to show without
-        # the other.
-        _LOGGER.info(
-            "[%s] WebSocket callback received command: %s (count=%d) payload=%s",
-            self._instance_id,
-            command,
-            self._callback_invocation_counts[command],
-            json.dumps(data, default=str),
-        )
+        _LOGGER.debug("WebSocket callback received command: %s", command)
 
         if command == 'EVENT_APO_STATE':
-            try:
-                self.async_set_updated_data(self.anova_oven._devices)
-                _LOGGER.info(
-                    "[%s] async_set_updated_data() completed, listeners=%d",
-                    self._instance_id, len(self._listeners),
-                )
-            except Exception:
-                _LOGGER.exception("[%s] async_set_updated_data() raised", self._instance_id)
+            self.async_set_updated_data(self.anova_oven._devices)
         elif command == 'ERROR':
             _LOGGER.error("Received ERROR from Anova API: %s", data)
         elif command == 'RESPONSE':
@@ -193,8 +130,6 @@ class AnovaOvenCoordinator(DataUpdateCoordinator[dict[str, Device]]):
                     await self.anova_oven.discover_devices()
                 else:
                     _LOGGER.debug("WebSocket connection healthy")
-
-            self._log_callback_registration_status()
 
             return self.anova_oven._devices
         except Exception as err:
@@ -271,6 +206,10 @@ class AnovaOvenCoordinator(DataUpdateCoordinator[dict[str, Device]]):
             raise UpdateFailed(f"Failed to start recipe: {err}") from err
 
         self._active_recipes[device_id] = (cook_id, recipe_id)
+        _LOGGER.info(
+            "[%s] async_start_recipe: tracked device=%s cook_id=%s recipe_id=%s",
+            self._instance_id, device_id, cook_id, recipe_id,
+        )
         await self.async_request_refresh()
 
     async def async_start_cook(self, device_id: str, **kwargs) -> None:
@@ -308,16 +247,38 @@ class AnovaOvenCoordinator(DataUpdateCoordinator[dict[str, Device]]):
         """
         device = self.get_device(device_id)
         if not device or not device.cook:
+            _LOGGER.info(
+                "[%s] get_active_recipe_id(%s): no device or no device.cook "
+                "(device=%s, cook=%s) -> clearing, returning None",
+                self._instance_id, device_id, device is not None,
+                device.cook if device else None,
+            )
             self._active_recipes.pop(device_id, None)
             return None
         tracked = self._active_recipes.get(device_id)
         if not tracked:
+            _LOGGER.info(
+                "[%s] get_active_recipe_id(%s): no tracked entry "
+                "(active_recipes=%s) -> returning None",
+                self._instance_id, device_id, self._active_recipes,
+            )
             return None
         tracked_cook_id, recipe_id = tracked
         if tracked_cook_id is None:
+            _LOGGER.info(
+                "[%s] get_active_recipe_id(%s): unconfirmed tracked cook_id, "
+                "adopting device.cook.cook_id=%s for recipe_id=%s",
+                self._instance_id, device_id, device.cook.cook_id, recipe_id,
+            )
             self._active_recipes[device_id] = (device.cook.cook_id, recipe_id)
             return recipe_id
         if tracked_cook_id != device.cook.cook_id:
+            _LOGGER.info(
+                "[%s] get_active_recipe_id(%s): cook_id MISMATCH "
+                "tracked=%s device_reports=%s recipe_id=%s -> clearing, returning None",
+                self._instance_id, device_id, tracked_cook_id,
+                device.cook.cook_id, recipe_id,
+            )
             self._active_recipes.pop(device_id, None)
             return None
         return recipe_id

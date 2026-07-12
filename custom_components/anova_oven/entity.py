@@ -1,16 +1,11 @@
 """Base entity for Anova Precision Oven."""
 from __future__ import annotations
 
-import logging
-
-from homeassistant.core import callback
 from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from .const import DOMAIN
 from .coordinator import AnovaOvenCoordinator
-
-_LOGGER = logging.getLogger(__name__)
 
 
 class AnovaOvenEntity(CoordinatorEntity[AnovaOvenCoordinator]):
@@ -28,19 +23,6 @@ class AnovaOvenEntity(CoordinatorEntity[AnovaOvenCoordinator]):
             self._attr_unique_id = f"{device_id}_{entity_type}"
         else:
             self._attr_unique_id = device_id
-
-    @callback
-    def _handle_coordinator_update(self) -> None:
-        """Diagnostic only: confirms HA's own listener-notification
-        mechanism (coordinator.async_update_listeners()) actually reaches
-        this entity, closing the last unverified link in the chain from
-        SDK message -> coordinator callback -> entity re-render."""
-        _LOGGER.info(
-            "[%s] _handle_coordinator_update fired for %s",
-            self.coordinator._instance_id,
-            self._attr_unique_id,
-        )
-        super()._handle_coordinator_update()
 
     @property
     def device_info(self) -> DeviceInfo:
