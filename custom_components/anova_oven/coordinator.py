@@ -62,6 +62,10 @@ class AnovaOvenCoordinator(DataUpdateCoordinator[dict[str, Device]]):
         # and a different cook was started from the Anova app directly),
         # rather than assuming any truthy device.cook still means "ours".
         self._active_recipes: dict[str, tuple[str | None, str]] = {}
+        # Diagnostic only: running invocation count per command type, so
+        # we can see the exact sequence/count over time rather than just a
+        # point-in-time "is it still registered" snapshot.
+        self._callback_invocation_counts: dict[str, int] = {}
 
         # Try to find the token in various keys
         self.api_token = entry.data.get(CONF_API_TOKEN)
@@ -99,34 +103,52 @@ class AnovaOvenCoordinator(DataUpdateCoordinator[dict[str, Device]]):
 
     def _log_callback_registration_status(self) -> None:
         """Diagnostic only: log whether our callback is still present in
-        the SDK client's callback list. Called from _async_update_data()
-        (the coordinator's existing periodic/on-demand refresh) rather
-        than a separate timer, so it needs no additional cleanup."""
+        the SDK client's callback list, how many HA listeners (entities)
+        are attached to this coordinator, and the running per-command
+        invocation counts. Called from _async_update_data() (the
+        coordinator's existing periodic/on-demand refresh) rather than a
+        separate timer, so it needs no additional cleanup."""
         callbacks = self.anova_oven.client._callbacks
         still_registered = self._handle_state_update_callback in callbacks
         _LOGGER.info(
-            "[%s] Callback check: client id=%s callbacks=%d still_registered=%s",
+            "[%s] Callback check: client id=%s callbacks=%d still_registered=%s "
+            "listeners=%d invocation_counts=%s",
             self._instance_id,
             format(id(self.anova_oven.client), 'x')[-6:],
             len(callbacks),
             still_registered,
+            len(self._listeners),
+            self._callback_invocation_counts,
         )
 
     def _handle_state_update_callback(self, data: dict[str, Any]) -> None:
         """Callback to trigger coordinator update when SDK receives state updates."""
         command = data.get('command')
+        self._callback_invocation_counts[command] = (
+            self._callback_invocation_counts.get(command, 0) + 1
+        )
         # Payload included in this same call (rather than a separate debug
         # line) so the confirmation that the callback fired and the actual
         # data it received are guaranteed to appear together as one atomic
         # log record, with nothing that could cause one to show without
         # the other.
         _LOGGER.info(
-            "[%s] WebSocket callback received command: %s payload=%s",
-            self._instance_id, command, json.dumps(data, default=str),
+            "[%s] WebSocket callback received command: %s (count=%d) payload=%s",
+            self._instance_id,
+            command,
+            self._callback_invocation_counts[command],
+            json.dumps(data, default=str),
         )
 
         if command == 'EVENT_APO_STATE':
-            self.async_set_updated_data(self.anova_oven._devices)
+            try:
+                self.async_set_updated_data(self.anova_oven._devices)
+                _LOGGER.info(
+                    "[%s] async_set_updated_data() completed, listeners=%d",
+                    self._instance_id, len(self._listeners),
+                )
+            except Exception:
+                _LOGGER.exception("[%s] async_set_updated_data() raised", self._instance_id)
         elif command == 'ERROR':
             _LOGGER.error("Received ERROR from Anova API: %s", data)
         elif command == 'RESPONSE':
