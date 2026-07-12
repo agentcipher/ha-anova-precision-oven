@@ -84,8 +84,7 @@ class AnovaOvenCoordinator(DataUpdateCoordinator[dict[str, Device]]):
         
         if command == 'EVENT_APO_STATE':
             _LOGGER.debug("Received state update, triggering coordinator refresh")
-            if _LOGGER.isEnabledFor(logging.DEBUG):
-                _LOGGER.debug("EVENT_APO_STATE raw payload: %s", json.dumps(data, default=str))
+            _LOGGER.info("EVENT_APO_STATE raw payload: %s", json.dumps(data, default=str))
             self.async_set_updated_data(self.anova_oven._devices)
         elif command == 'ERROR':
             _LOGGER.error("Received ERROR from Anova API: %s", data)
