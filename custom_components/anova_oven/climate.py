@@ -126,6 +126,7 @@ class AnovaOvenClimate(AnovaOvenEntity, ClimateEntity):
                 if recipe_id
                 else "Manual Cook"
             )
+            attrs["cook_id"] = device.cook.cook_id
             if device.total_stage_count is not None:
                 attrs[ATTR_STAGES] = device.total_stage_count
             if device.current_stage_index is not None:
