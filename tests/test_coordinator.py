@@ -409,6 +409,46 @@ async def test_get_active_recipe_id_clears_on_cook_id_mismatch(
         assert "test-device-123" not in coordinator._active_recipes
 
 
+async def test_get_active_recipe_id_survives_transient_no_cook_after_start(
+    hass: HomeAssistant,
+    mock_config_entry: MockConfigEntry,
+    mock_anova_oven: AsyncMock,
+    mock_device,
+):
+    """Regression test: right after starting a recipe, device.cook is
+    briefly still None (the oven hasn't sent back a state update yet).
+    get_active_recipe_id() must not destroy the tracked (cook_id,
+    recipe_id) entry just because device.cook is momentarily absent -
+    otherwise the tracking is gone before it ever gets a chance to be
+    confirmed once the real cook_id arrives moments later."""
+    mock_anova_oven.discover_devices.return_value = [mock_device]
+
+    mock_config_entry.add_to_hass(hass)
+
+    with patch(
+        "custom_components.anova_oven.coordinator.AnovaOven",
+        return_value=mock_anova_oven,
+    ):
+        coordinator = AnovaOvenCoordinator(hass, mock_config_entry)
+        await coordinator.async_refresh()
+
+        # Simulate async_start_recipe() having just tracked a new cook,
+        # before any state update confirming it has arrived.
+        coordinator._active_recipes["test-device-123"] = ("cook-123", "roast_chicken")
+        assert mock_device.cook is None
+
+        # device.cook is still None at this instant - should return None
+        # for now, but must NOT wipe the tracked entry.
+        assert coordinator.get_active_recipe_id("test-device-123") is None
+        assert coordinator._active_recipes["test-device-123"] == ("cook-123", "roast_chicken")
+
+        # Now the real state update arrives, confirming the matching cook_id.
+        from anova_oven_sdk.response_models import CookSessionState
+        mock_device.cook = CookSessionState.model_validate({"cookId": "cook-123"})
+
+        assert coordinator.get_active_recipe_id("test-device-123") == "roast_chicken"
+
+
 async def test_get_active_recipe_id_matches_cook_id(
     hass: HomeAssistant,
     mock_config_entry: MockConfigEntry,

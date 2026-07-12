@@ -206,10 +206,6 @@ class AnovaOvenCoordinator(DataUpdateCoordinator[dict[str, Device]]):
             raise UpdateFailed(f"Failed to start recipe: {err}") from err
 
         self._active_recipes[device_id] = (cook_id, recipe_id)
-        _LOGGER.info(
-            "[%s] async_start_recipe: tracked device=%s cook_id=%s recipe_id=%s",
-            self._instance_id, device_id, cook_id, recipe_id,
-        )
         await self.async_request_refresh()
 
     async def async_start_cook(self, device_id: str, **kwargs) -> None:
@@ -247,38 +243,27 @@ class AnovaOvenCoordinator(DataUpdateCoordinator[dict[str, Device]]):
         """
         device = self.get_device(device_id)
         if not device or not device.cook:
-            _LOGGER.info(
-                "[%s] get_active_recipe_id(%s): no device or no device.cook "
-                "(device=%s, cook=%s) -> clearing, returning None",
-                self._instance_id, device_id, device is not None,
-                device.cook if device else None,
-            )
-            self._active_recipes.pop(device_id, None)
+            # Deliberately NOT popping _active_recipes here: this branch is
+            # also hit in the brief window right after starting a cook,
+            # before the oven has sent back any state update confirming it
+            # (device.cook is still None from before the cook started, not
+            # because it ended). Popping unconditionally on every "no
+            # device.cook" read destroyed the tracked entry moments after
+            # async_start_recipe() set it - the tracked recipe never had a
+            # chance to be confirmed against a real cook_id. Simply
+            # returning None here already reflects "no active cook right
+            # now" correctly; the entry gets cleared for real once a cook_id
+            # mismatch is actually observed below, or via
+            # async_start_cook()/async_stop_cook().
             return None
         tracked = self._active_recipes.get(device_id)
         if not tracked:
-            _LOGGER.info(
-                "[%s] get_active_recipe_id(%s): no tracked entry "
-                "(active_recipes=%s) -> returning None",
-                self._instance_id, device_id, self._active_recipes,
-            )
             return None
         tracked_cook_id, recipe_id = tracked
         if tracked_cook_id is None:
-            _LOGGER.info(
-                "[%s] get_active_recipe_id(%s): unconfirmed tracked cook_id, "
-                "adopting device.cook.cook_id=%s for recipe_id=%s",
-                self._instance_id, device_id, device.cook.cook_id, recipe_id,
-            )
             self._active_recipes[device_id] = (device.cook.cook_id, recipe_id)
             return recipe_id
         if tracked_cook_id != device.cook.cook_id:
-            _LOGGER.info(
-                "[%s] get_active_recipe_id(%s): cook_id MISMATCH "
-                "tracked=%s device_reports=%s recipe_id=%s -> clearing, returning None",
-                self._instance_id, device_id, tracked_cook_id,
-                device.cook.cook_id, recipe_id,
-            )
             self._active_recipes.pop(device_id, None)
             return None
         return recipe_id
