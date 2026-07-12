@@ -80,8 +80,8 @@ class AnovaOvenCoordinator(DataUpdateCoordinator[dict[str, Device]]):
     def _handle_state_update_callback(self, data: dict[str, Any]) -> None:
         """Callback to trigger coordinator update when SDK receives state updates."""
         command = data.get('command')
-        _LOGGER.debug("WebSocket callback received command: %s", command)
-        
+        _LOGGER.info("WebSocket callback received command: %s", command)
+
         if command == 'EVENT_APO_STATE':
             _LOGGER.debug("Received state update, triggering coordinator refresh")
             _LOGGER.info("EVENT_APO_STATE raw payload: %s", json.dumps(data, default=str))
