@@ -88,6 +88,21 @@ class AnovaOvenCoordinator(DataUpdateCoordinator[dict[str, Device]]):
             len(self.anova_oven.client._callbacks),
         )
 
+    def _log_callback_registration_status(self) -> None:
+        """Diagnostic only: log whether our callback is still present in
+        the SDK client's callback list. Called from _async_update_data()
+        (the coordinator's existing periodic/on-demand refresh) rather
+        than a separate timer, so it needs no additional cleanup."""
+        callbacks = self.anova_oven.client._callbacks
+        still_registered = self._handle_state_update_callback in callbacks
+        _LOGGER.info(
+            "[%s] Callback check: client id=%s callbacks=%d still_registered=%s",
+            self._instance_id,
+            format(id(self.anova_oven.client), 'x')[-6:],
+            len(callbacks),
+            still_registered,
+        )
+
     def _handle_state_update_callback(self, data: dict[str, Any]) -> None:
         """Callback to trigger coordinator update when SDK receives state updates."""
         command = data.get('command')
@@ -147,6 +162,8 @@ class AnovaOvenCoordinator(DataUpdateCoordinator[dict[str, Device]]):
                     await self.anova_oven.discover_devices()
                 else:
                     _LOGGER.debug("WebSocket connection healthy")
+
+            self._log_callback_registration_status()
 
             return self.anova_oven._devices
         except Exception as err:
